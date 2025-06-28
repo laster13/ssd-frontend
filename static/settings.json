@@ -1,0 +1,20 @@
+{
+    "applications": [
+        {
+            "id": "1",
+            "label": "alfred"
+        }
+    ],
+    "dossiers": {
+        "on_item_type": [
+            "alfred"
+        ],
+        "authentification": {
+            "authappli": "basique",
+            "alfred": "basique"
+        },
+        "domaine": {
+            "alfred": "alfred"
+        }
+    }
+}
