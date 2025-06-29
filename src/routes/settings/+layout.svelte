@@ -20,8 +20,7 @@
 		{
 			name: 'Applications',
 			path: '/settings/applications'
-		}	
-	
+		}
         ];
 </script>
 

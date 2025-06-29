@@ -16,7 +16,7 @@ import os from 'os';
 import { SettingsService } from '$lib/client';
 
 const userName = os.userInfo().username;
-const settingsFilePath = `/home/${userName}/projet-riven/riven-frontend/static/settings.json`;
+const settingsFilePath = `/home/${userName}/projet-ssd/ssd-frontend/static/settings.json`;
 
 export const load: PageServerLoad = async ({ fetch }) => {
     console.log('--- Début de la fonction de chargement ---');
