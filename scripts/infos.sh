@@ -4,7 +4,7 @@
   get_architecture
 
   # Chemin vers le fichier JSON
-  json_file="/home/${USER}/projet-riven/riven/data/settings.json"
+  json_file="/home/${USER}/projet-ssd/ssd-backend/data/settings.json"
 
   # Vérifie si le fichier existe
   if [ ! -f "$json_file" ]; then
@@ -64,12 +64,12 @@
   if [[ "$zurg_enabled" == true && -n "$zurg_token" ]]; then
     # Lancer le script si les conditions sont remplies
     manage_account_yml zurg.sponsor "$zurg_token"
-    $HOME/projet-riven/riven-frontend/scripts/zurg.sh
+    $HOME/projet-ssd/ssd-frontend/scripts/zurg.sh
   elif [[ "$zurg_enabled" == false ]]; then
     # Ne rien faire si zurg_enabled est false
     echo "zurg_enabled est désactivé. Aucune action effectuée."
   else
-    $HOME/projet-riven/riven-frontend/scripts/zurg_public.sh
+    $HOME/projet-ssd/ssd-frontend/scripts/zurg_public.sh
   fi
 
   # creation utilisateur

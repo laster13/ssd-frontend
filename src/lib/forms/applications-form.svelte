@@ -20,7 +20,6 @@
     import { writable } from 'svelte/store';
     import { Radio } from 'flowbite-svelte';
     import { Button } from '$lib/components/ui/button';
-    import { v4 as uuidv4 } from 'uuid';
     import RunScript from '../../routes/run-script.svelte'; 
 
     export let data: SuperValidated<Infer<ApplicationsSettingsSchema>>;

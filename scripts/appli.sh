@@ -3,8 +3,8 @@
 source /home/${USER}/seedbox-compose/profile.sh
 
 # Chemins et variables
-json_file="${HOME}/projet-riven/riven/data/settings.json"
-compose_file="${HOME}/projet-riven/riven-frontend/scripts/docker-compose.yml"
+json_file="${HOME}/projet-ssd/ssd-backend/data/settings.json"
+compose_file="${HOME}/projet-ssd/ssd-frontend/scripts/docker-compose.yml"
 compose_file="docker-compose.yml"
 line=$1
 
@@ -13,7 +13,7 @@ generate_compose_file() {
     echo "Création du fichier .env avec les variables d'environnement..."
 
     # Génération du fichier .env
-    cat <<EOF > ${HOME}/projet-riven/riven-frontend/scripts/.env
+    cat <<EOF > ${HOME}/projet-ssd/ssd-frontend/scripts/.env
 SECRET_API_KEY=$(jq -r '.scraping.yggflix.secret_api_key // "default-secret"' "$json_file")
 TMDB_API_KEY=$(jq -r '.scraping.yggflix.tmdb_api_key // "default-tmdb"' "$json_file")
 RD_TOKEN=$(jq -r '.downloaders.real_debrid.api_key // ""' "$json_file")

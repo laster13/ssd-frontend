@@ -61,7 +61,7 @@ function install_zurg() {
   ansible-playbook "${SETTINGS_SOURCE}/includes/config/roles/rclone/tasks/main.yml" 2>/dev/null
 
   # Nettoyer le fichier temporaire
-  sudo rm $HOME/projet-riven/riven-frontend/scripts/releases.json 2>/dev/null
+  sudo rm $HOME/projet-ssd/ssd-frontend/scripts/releases.json 2>/dev/null
   gh auth logout > /dev/null 2>&1
 }
 

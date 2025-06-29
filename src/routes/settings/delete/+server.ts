@@ -6,7 +6,7 @@ const userName = os.userInfo().username;
 
 // Chemins des fichiers
 const settingsFilePath = `/home/${userName}/projet-ssd/ssd-frontend/static/settings.json`;
-const localSettingsFilePath = `/home/${userName}/projet-ssd/ssd/data/settings.json`;
+const localSettingsFilePath = `/home/${userName}/projet-ssd/ssd-backend/data/settings.json`;
 const servicesFilePath = `/home/${userName}/projet-ssd/ssd-frontend/static/services.json`;
 const sourceFilePath = `/home/${userName}/seedbox-compose/includes/config/services-available`;
 

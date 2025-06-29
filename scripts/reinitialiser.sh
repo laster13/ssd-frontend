@@ -13,5 +13,5 @@
     launch_service ${line}
     ansible-playbook "${SETTINGS_SOURCE}/includes/config/roles/rclone/tasks/main.yml" >/dev/null 2>&1
   else
-    source ${HOME}/projet-riven/riven-frontend/scripts/appli.sh ${line}
+    source ${HOME}/projet-ssd/ssd-frontend/scripts/appli.sh ${line}
   fi
