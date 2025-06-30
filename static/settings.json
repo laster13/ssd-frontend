@@ -1,0 +1,10 @@
+{
+  "applications": [],
+  "dossiers": {
+    "on_item_type": [],
+    "authentification": {
+      "authappli": "basique"
+    },
+    "domaine": {}
+  }
+}
