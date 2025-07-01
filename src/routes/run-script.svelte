@@ -27,7 +27,6 @@
     function runScript() {
         console.log('Lancement du script:', scriptName, label ? `avec label: ${label}` : "sans label");  // Débogage
         logs = [];
-        statusMessage = "Lancement du script...";
 
         // Mettre à jour l'état du bouton via l'événement
         dispatch('buttonStateChange', { isSubmitting: true, showSpinner: true });
@@ -43,7 +42,7 @@
         eventSource.onmessage = (event) => {
             console.log("Log reçu : ", event.data); // Vérifiez ici
             logs = [event.data, ...logs].slice(0, 20); // Limiter à 15 logs visibles
-            statusMessage = "Script en cours d'exécution...";
+            statusMessage = "En cours de traitement......";
             dispatch('statusMessageUpdate', { statusMessage });
         };
 
@@ -57,7 +56,7 @@
         };
 
         eventSource.addEventListener("end", () => {
-            toast.success("Installation du script terminée");
+            toast.success("Opération terminée avec succés");
             statusMessage = '';
 
             // Mise à jour de l'état du bouton (fin d'exécution)

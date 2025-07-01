@@ -158,7 +158,7 @@
             // Attendre 2 secondes avant la redirection
             setTimeout(() => {
                 goto('/onboarding/2');
-            }, 500);
+            }, 100);
         }
     }
 

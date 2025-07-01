@@ -10,11 +10,11 @@
     // Définir les sections principales de l'installation
     const settingsItems: NavItem[] = [
 		{
-			name: 'Prérequis',
+			name: 'Import de données',
 			path: '/settings/test'
 		},
 		{
-			name: 'Profil & Outils',
+			name: 'Informations personnelles',
 			path: '/settings/seedbox'
 		},
 		{

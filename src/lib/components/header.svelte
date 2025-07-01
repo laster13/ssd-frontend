@@ -6,6 +6,7 @@
 	import type { Writable } from 'svelte/store';
 	import type { NavItem } from '$lib/types';
 	import { Mountain, MoreHorizontal } from 'lucide-svelte';
+        import { Plane } from 'lucide-svelte';
 	import ThemeSwitcher from '$lib/components/theme-switcher.svelte';
 	import NavigationItem from '$lib/components/header-item.svelte';
 	import { Button } from '$lib/components/ui/button';
@@ -57,7 +58,7 @@
 >
 	<div class="flex items-center gap-2">
 		<a href="/" class="flex items-center gap-2">
-			<Mountain class="size-6 md:size-8" />
+			<Plane class="size-6 md:size-8" />
 			<h1 class="text-xl font-medium md:text-2xl">SSDv2</h1>
 		</a>
 	</div>

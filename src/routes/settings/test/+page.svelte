@@ -8,7 +8,7 @@
 <div class="flex flex-col">
 	<h2 class="text-xl font-medium md:text-2xl">Paramètres Généraux</h2>
 	<p class="text-sm text-muted-foreground md:text-base">
-		Installation SSDv2.
+		Contrôle de l'état de la seedbox et synchronisation des données.
 	</p>
 
 	<TestForm data={data.form} actionUrl="/settings/test" />

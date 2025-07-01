@@ -143,16 +143,6 @@
             </div>
         {/if}
 
-    <div transition:slide>
-        <CheckboxField {form} name="zurg_enabled" label="Zurg" fieldDescription="Version Public" {formData} />
-    </div>
-
-        {#if $formData.zurg_enabled}
-            <div transition:slide>
-                <TextField {form} name="zurg_token" label="Zurg Token" fieldDescription="Version Sponsor" {formData} />
-            </div>
-        {/if}
-
         <Separator class="mt-4" />
 
         <!-- Exemple de groupe de champs avec description -->
