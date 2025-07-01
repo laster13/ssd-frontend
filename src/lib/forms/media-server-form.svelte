@@ -43,7 +43,7 @@
 		clientIdentifier = uuidv4();
 		return clientIdentifier;
 	};
-	let appName = 'Riven';
+	let appName = 'SSD';
 	let plexId: string;
 	let plexCode: string;
 	// eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -115,12 +115,19 @@
 </script>
 
 <form method="POST" action={actionUrl} use:enhance class="my-8 flex flex-col gap-2">
-
 	<GroupCheckboxField
-		fieldTitle="Configuration Plex"
-		fieldDescription="Authentification"
+		fieldTitle="Medias Servers"
+		fieldDescription="Configuration"
 	>
-		<CheckboxField {form} name="plex_enabled" label="" {formData} isForGroup={true} />
+		<CheckboxField {form} name="plex_enabled" label="Plex" {formData} isForGroup={true} />
+		<CheckboxField
+			{form}
+			name="jellyfin_enabled"
+			label="Jellyfin"
+			{formData}
+			isForGroup={true}
+		/>
+		<CheckboxField {form} name="emby_enabled" label="Emby" {formData} isForGroup={true} />
 	</GroupCheckboxField>
 
 	{#if $formData.plex_enabled}
@@ -128,7 +135,7 @@
 			<TextField {form} name="plex_login" {formData} label="Plex login" />
 		</div>
 		<div transition:slide>
-			<TextField {form} name="plex_password" {formData} label="Plex password" />
+			<TextField {form} name="plex_password" {formData} label="Plex password" isProtected={true} />
 		</div>
 
 		<div transition:slide>
@@ -167,6 +174,24 @@
 					</div>
 				</Form.Control>
 			</Form.Field>
+		</div>
+	{/if}
+
+	{#if $formData.jellyfin_enabled}
+		<div transition:slide>
+			<TextField
+				{form}
+				name="jellyfin_token"
+				label="Jellyfin Token"
+				{formData}
+				isProtected={true}
+			/>
+		</div>
+	{/if}
+
+	{#if $formData.emby_enabled}
+		<div transition:slide>
+			<TextField {form} name="emby_token" label="Emby Token" {formData} isProtected={true} />
 		</div>
 	{/if}
 

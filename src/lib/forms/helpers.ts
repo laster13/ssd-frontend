@@ -180,13 +180,17 @@ export function seedboxSettingsToSet(form: SuperValidated<Infer<SeedboxSettingsS
 
 // Media Server Settings -----------------------------------------------------------------------------------
 
-export const mediaServerSettingsToGet: string[] = ['plex'];
+export const mediaServerSettingsToGet: string[] = ['plex', 'jellyfin', 'emby'];
 
 export const mediaServerSettingsSchema = z.object({
 	plex_enabled: z.boolean().default(false),
 	plex_token: z.string().optional().default(''),
 	plex_login: z.string().optional().default(''),
-	plex_password: z.string().optional().default('')
+	plex_password: z.string().optional().default(''),
+	jellyfin_enabled: z.boolean().default(false),
+	jellyfin_token: z.string().optional().default(''),
+	emby_enabled: z.boolean().default(false),
+	emby_token: z.string().optional().default('')
 });
 export type MediaServerSettingsSchema = typeof mediaServerSettingsSchema;
 
@@ -196,7 +200,11 @@ export function mediaServerSettingsToPass(data: any) {
 		plex_token: data.plex.token,
 		plex_login: data.plex.login,
 		plex_password: data.plex.password,
-		plex_enabled: data.plex.enabled
+		plex_enabled: data.plex.enabled,
+		jellyfin_token: data.jellyfin.api_key,
+		jellyfin_enabled: data.jellyfin.enabled,
+		emby_token: data.emby.api_key,
+		emby_enabled: data.emby.enabled
 	};
 }
 
@@ -209,6 +217,20 @@ export function mediaServerSettingsToSet(form: SuperValidated<Infer<MediaServerS
 				token: form.data.plex_token,
 				login: form.data.plex_login,
 				password: form.data.plex_password
+			}
+		},
+		{
+			key: 'jellyfin',
+			value: {
+				enabled: form.data.jellyfin_enabled,
+				api_key: form.data.jellyfin_token
+			}
+		},
+		{
+			key: 'emby',
+			value: {
+				enabled: form.data.emby_enabled,
+				api_key: form.data.emby_token
 			}
 		}
 	];

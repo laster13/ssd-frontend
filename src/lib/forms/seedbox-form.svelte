@@ -114,7 +114,7 @@
     </div>
 
     <div transition:slide>
-        <TextField {form} name="password" label="Password" {formData} />
+        <TextField {form} name="password" label="Password" {formData} isProtected={true} />
     </div>
 
     <div transition:slide>
@@ -122,7 +122,7 @@
     </div>
 
     <div transition:slide>
-        <TextField {form} name="cloudflare_api_key" label="Cloudflare API" {formData} />
+        <TextField {form} name="cloudflare_api_key" label="Cloudflare API" isProtected={true} {formData} />
     </div>
 
     <div transition:slide>
@@ -131,11 +131,11 @@
 
         {#if $formData.oauth_enabled}
             <div transition:slide>
-                <TextField {form} name="oauth_client" label="Oauth Client" {formData} />
+                <TextField {form} name="oauth_client" label="Oauth Client" isProtected={true} {formData} />
             </div>
 
             <div transition:slide>
-                <TextField {form} name="oauth_secret" label="Oauth Secret" {formData} />
+                <TextField {form} name="oauth_secret" label="Oauth Secret" isProtected={true} {formData} />
             </div>
 
             <div transition:slide>
