@@ -14,21 +14,16 @@
 	// Chargement des conteneurs et domaines
 	async function loadContainers() {
 		try {
-			// 1. Charger les domaines avant les conteneurs
-                        const resDomains = await fetch('/api/v1/scripts/domains');
-
+			const resDomains = await fetch('/api/v1/scripts/domains');
 			if (!resDomains.ok) throw new Error('Erreur chargement domaines');
 			domainMap = await resDomains.json();
 
-			// 2. Charger les conteneurs
 			const res = await fetch('/api/docker');
 			if (!res.ok) throw new Error('Erreur réseau');
 			const data = await res.json();
 
-			// 3. Associer les domaines à chaque conteneur
 			containers = data.containers.map((c: any) => {
 				const matchedDomain = domainMap[c.name] || null;
-				console.log(`Conteneur ${c.name} → ${matchedDomain}`);
 				return { ...c, domain: matchedDomain };
 			});
 
@@ -64,7 +59,11 @@
 
 	onMount(() => {
 		loadContainers();
-		intervalId = setInterval(loadContainers, 1000);
+		intervalId = setInterval(() => {
+			if (document.visibilityState === 'visible') {
+				loadContainers();
+			}
+		}, 5000);
 	});
 
 	onDestroy(() => {
@@ -73,10 +72,10 @@
 </script>
 
 <div class="px-6 pt-32 pb-8">
-	<h2 class="text-xl font-semibold text-zinc-900 dark:text-white mb-4">Conteneurs Docker</h2>
+	<h2 class="text-xl font-semibold text-indigo-600 dark:text-indigo-400 mb-4">Conteneurs Docker</h2>
 
 	{#if loading}
-		<p class="text-zinc-700 dark:text-white">Chargement…</p>
+		<p class="text-zinc-700 dark:text-white animate-pulse">Chargement…</p>
 	{:else if error}
 		<p class="text-red-500">{error}</p>
 	{:else if containers.length === 0}
@@ -84,6 +83,7 @@
 	{:else}
 		<div class="grid gap-4 grid-cols-[repeat(auto-fit,minmax(250px,1fr))]">
 			{#each containers as c}
+				{ @const isRunning = c.status.includes('Up') }
 				<div class="rounded-xl bg-white dark:bg-zinc-800 p-4 text-zinc-900 dark:text-white shadow-sm text-sm flex flex-col justify-between border border-zinc-200 dark:border-zinc-700">
 					<div>
 						<h3 class="text-base font-semibold mb-1 text-indigo-600 dark:text-indigo-400">
@@ -101,7 +101,7 @@
 							<p class="text-xs text-zinc-600 dark:text-zinc-400 truncate"><strong>Domaine:</strong> {c.domain}</p>
 						{/if}
 						<p class="flex items-center gap-2 mt-2 mb-3">
-							<span class={`w-2 h-2 rounded-full ${c.status.includes('Up') ? 'bg-green-500' : 'bg-red-500'}`}></span>
+							<span class={`w-2 h-2 rounded-full ${isRunning ? 'bg-green-500' : 'bg-red-500'}`}></span>
 							<span class="text-xs text-zinc-700 dark:text-zinc-300">{c.status}</span>
 						</p>
 					</div>
@@ -114,7 +114,7 @@
 								<span class="text-xs">Redémarrer</span>
 							{/if}
 						</Button>
-						{#if !c.status.includes('Up')}
+						{#if !isRunning}
 							<Button size="sm" variant="default" disabled={loadingId === c.id} on:click={() => sendAction(c.id, 'start')}>
 								{#if loadingId === c.id && currentAction === 'start'}
 									<Loader2 class="mr-2 h-4 w-4 animate-spin" />
@@ -124,7 +124,7 @@
 								{/if}
 							</Button>
 						{/if}
-						{#if c.status.includes('Up')}
+						{#if isRunning}
 							<Button size="sm" variant="destructive" disabled={loadingId === c.id} on:click={() => sendAction(c.id, 'stop')}>
 								{#if loadingId === c.id && currentAction === 'stop'}
 									<Loader2 class="mr-2 h-4 w-4 animate-spin" />
