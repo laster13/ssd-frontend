@@ -180,44 +180,35 @@ export function seedboxSettingsToSet(form: SuperValidated<Infer<SeedboxSettingsS
 
 // Media Server Settings -----------------------------------------------------------------------------------
 
-export const mediaServerSettingsToGet: string[] = ['updaters'];
+export const mediaServerSettingsToGet: string[] = ['plex'];
 
 export const mediaServerSettingsSchema = z.object({
-	// update_interval: z.number().nonnegative().int().optional().default(120), // Moved to coerce due to https://github.com/huntabyte/shadcn-svelte/issues/574
-	update_interval: z.coerce.number().gte(0).int().optional().default(120),
 	plex_enabled: z.boolean().default(false),
 	plex_token: z.string().optional().default(''),
 	plex_login: z.string().optional().default(''),
-	plex_password: z.string().optional().default(''),
-	plex_url: z.string().optional().default('')
+	plex_password: z.string().optional().default('')
 });
 export type MediaServerSettingsSchema = typeof mediaServerSettingsSchema;
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function mediaServerSettingsToPass(data: any) {
 	return {
-		update_interval: data.updaters.update_interval,
-		plex_token: data.updaters.plex.token,
-		plex_url: data.updaters.plex.url,
-		plex_login: data.updaters.plex.login,
-		plex_password: data.updaters.plex.password,
-		plex_enabled: data.updaters.plex.enabled
+		plex_token: data.plex.token,
+		plex_login: data.plex.login,
+		plex_password: data.plex.password,
+		plex_enabled: data.plex.enabled
 	};
 }
 
 export function mediaServerSettingsToSet(form: SuperValidated<Infer<MediaServerSettingsSchema>>) {
 	return [
 		{
-			key: 'updaters',
+			key: 'plex',
 			value: {
-				update_interval: form.data.update_interval,
-				plex: {
-					enabled: form.data.plex_enabled,
-					token: form.data.plex_token,
-					login: form.data.plex_login,
-					password: form.data.plex_password,
-					url: form.data.plex_url
-				}
+				enabled: form.data.plex_enabled,
+				token: form.data.plex_token,
+				login: form.data.plex_login,
+				password: form.data.plex_password
 			}
 		}
 	];

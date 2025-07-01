@@ -18,6 +18,10 @@
 			path: '/settings/seedbox'
 		},
 		{
+			name: 'Medias Servers',
+			path: '/settings/mediaserver'
+		},
+		{
 			name: 'Applications',
 			path: '/settings/applications'
 		}

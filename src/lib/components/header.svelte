@@ -13,7 +13,9 @@
 
 	const navItems: NavItem[] = [
 		{ name: 'Accueil', path: '/' },
-		{ name: 'Parametres', path: '/settings' }
+		{ name: 'Medias', path: '/browse' },
+		{ name: 'Synthèse', path: '/summary' },
+		{ name: 'Paramètres', path: '/settings' }
 	];
 
 	let showMenu: Writable<boolean> = getContext('showMenu');
@@ -22,16 +24,21 @@
 
 	onMount(() => {
 		const header = document.getElementById('header');
+
 		applyBackdropBlur = () => {
-			if (window.scrollY > 0) {
+			if (window.scrollY) {
 				header?.classList.remove('p-8');
-				header?.classList.add('p-4', 'backdrop-blur-sm');
+				header?.classList.add('p-4');
+				header?.classList.add('backdrop-blur-sm');
 			} else {
-				header?.classList.remove('p-4', 'backdrop-blur-sm');
+				header?.classList.remove('p-4');
 				header?.classList.add('p-8');
+				header?.classList.remove('backdrop-blur-sm');
 			}
 		};
+
 		applyBackdropBlur();
+
 		if (browser) {
 			window.addEventListener('scroll', applyBackdropBlur);
 		}
@@ -44,21 +51,17 @@
 	});
 </script>
 
-<!-- HEADER -->
 <header
 	id="header"
-	class="fixed top-0 z-[99] w-full flex items-center justify-between bg-white dark:bg-zinc-900 text-zinc-900 dark:text-white p-8 shadow-sm transition-all duration-300 ease-in-out md:px-24 lg:px-32"
+	class="fixed top-0 z-[99] flex w-full items-center justify-between bg-transparent p-8 transition-all duration-300 ease-in-out md:px-24 lg:px-32"
 >
-	<!-- Logo -->
 	<div class="flex items-center gap-2">
 		<a href="/" class="flex items-center gap-2">
-			<Mountain class="size-6 md:size-8 text-indigo-600 dark:text-indigo-400" />
-			<h1 class="text-xl font-semibold md:text-2xl">SSDv2</h1>
+			<Mountain class="size-6 md:size-8" />
+			<h1 class="text-xl font-medium md:text-2xl">SSDv2</h1>
 		</a>
 	</div>
-
-	<!-- Desktop nav -->
-	<nav class="hidden md:flex items-center gap-6">
+	<nav class="hidden items-center gap-6 tracking-wider md:flex">
 		<div class="flex items-center gap-3">
 			{#each navItems as navItem}
 				<NavigationItem {navItem} />
@@ -66,11 +69,14 @@
 		</div>
 		<ThemeSwitcher />
 	</nav>
-
-	<!-- Mobile nav -->
-	<nav class="flex md:hidden items-center gap-2">
+	<nav class="flex items-center gap-2 tracking-wider md:hidden">
 		<ThemeSwitcher />
-		<Drawer.Root onClose={() => showMenu.set(false)} open={$showMenu}>
+		<Drawer.Root
+			onClose={() => {
+				showMenu.set(false);
+			}}
+			open={$showMenu}
+		>
 			<Drawer.Trigger>
 				<Button type="button" size="sm" class="max-w-max">
 					<MoreHorizontal class="h-4 w-4" />
@@ -81,7 +87,9 @@
 					{#each navItems as navItem}
 						<Drawer.Close asChild let:builder>
 							<Button
-								on:click={() => goto(navItem.path)}
+								on:click={() => {
+									goto(navItem.path);
+								}}
 								builders={[builder]}
 								size="sm"
 								variant="ghost"
