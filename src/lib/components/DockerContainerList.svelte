@@ -63,7 +63,7 @@
 			if (document.visibilityState === 'visible') {
 				loadContainers();
 			}
-		}, 5000);
+		}, 1000);
 	});
 
 	onDestroy(() => {
