@@ -14,7 +14,7 @@
 
 	const navItems: NavItem[] = [
 		{ name: 'Accueil', path: '/' },
-		{ name: 'Medias', path: '/browse' },
+		{ name: 'Sauvegardes', path: '/settings/sauvegarde' },
 		{ name: 'Synthèse', path: '/summary' },
 		{ name: 'Paramètres', path: '/settings' }
 	];
@@ -40,9 +40,6 @@
 
 		applyBackdropBlur();
 
-		if (browser) {
-			window.addEventListener('scroll', applyBackdropBlur);
-		}
 	});
 
 	onDestroy(() => {
