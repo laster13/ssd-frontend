@@ -1,5 +1,4 @@
 @import 'nprogress.css';
-
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -63,3 +62,5 @@
 .no-scrollbar::-webkit-scrollbar {
 	display: none;
 }
+
+

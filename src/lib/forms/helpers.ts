@@ -196,16 +196,18 @@ export type MediaServerSettingsSchema = typeof mediaServerSettingsSchema;
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function mediaServerSettingsToPass(data: any) {
-	return {
-		plex_token: data.plex.token,
-		plex_login: data.plex.login,
-		plex_password: data.plex.password,
-		plex_enabled: data.plex.enabled,
-		jellyfin_token: data.jellyfin.api_key,
-		jellyfin_enabled: data.jellyfin.enabled,
-		emby_token: data.emby.api_key,
-		emby_enabled: data.emby.enabled
-	};
+  return {
+    plex_token: data?.plex?.token ?? '',
+    plex_login: data?.plex?.login ?? '',
+    plex_password: data?.plex?.password ?? '',
+    plex_enabled: data?.plex?.enabled ?? false,
+
+    jellyfin_token: data?.jellyfin?.api_key ?? '',
+    jellyfin_enabled: data?.jellyfin?.enabled ?? false,
+
+    emby_token: data?.emby?.api_key ?? '',
+    emby_enabled: data?.emby?.enabled ?? false
+  };
 }
 
 export function mediaServerSettingsToSet(form: SuperValidated<Infer<MediaServerSettingsSchema>>) {

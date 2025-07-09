@@ -57,6 +57,11 @@
   $: dockerLoadingSaveMap = $dockerLoadingSave;
   $: dockerLoadingMap = $dockerLoadingBackup; // ✅ mapping correct
 
+axios.interceptors.request.use((config) => {
+  console.log("[AXIOS]", config.method?.toUpperCase(), config.url);
+  return config;
+});
+
   // MÉDIAS functions
   function updateEditedDay(folder: string, day: string) {
     editedSchedules.update((edits) => ({ ...edits, [folder]: { ...edits[folder], day } }));
@@ -91,7 +96,7 @@
 
   async function fetchMediaData() {
     try {
-      const foldersRes = await axios.get('/api/v1/media-backups/scan');
+      const foldersRes = await axios.get('/api/v1/media-backups/scan/');
       folders.set(foldersRes.data);
       const schedulesRes = await axios.get('/api/v1/media-backups/');
       schedules.set(schedulesRes.data);
@@ -103,9 +108,9 @@
 
   async function fetchDockerData() {
     try {
-      const res = await axios.get('/api/v1/docker/scan');
+      const res = await axios.get('/api/v1/docker/scan/');
       containers.set(res.data);
-      const sched = await axios.get('/api/v1/docker');
+      const sched = await axios.get('/api/v1/docker/');
       dockerSchedules.set(sched.data);
     } catch (err) {
       toast.error("Erreur de chargement des données Docker.");
@@ -117,7 +122,7 @@
     if (!config) return;
     try {
       loadingSave.update(l => ({ ...l, [name]: true }));
-      await axios.post('/api/v1/media-backups/schedule', {
+      await axios.post('/api/v1/media-backups/schedule/', {
         name,
         day: config.day,
         hour: config.hour
@@ -140,7 +145,7 @@
       const interval = setInterval(() => {
         progress.update(p => ({ ...p, [name]: Math.min(100, (p[name] || 0) + 10) }));
       }, 300);
-      await axios.post('/api/v1/media-backups/run', { name });
+      await axios.post('/api/v1/media-backups/run/', { name });
       toast.success(`✅ Sauvegarde lancée pour ${name}`);
       clearInterval(interval);
       progress.update(p => ({ ...p, [name]: 100 }));
@@ -164,7 +169,7 @@ async function runDockerBackup(name: string) {
   }, 250);
 
   try {
-    await axios.post('/api/v1/docker/run', { name });
+    await axios.post('/api/v1/docker/run/', { name });
     toast.success(`✅ Sauvegarde lancée pour ${name}`);
   } catch {
     toast.error("Erreur lors de la sauvegarde docker");
@@ -182,7 +187,7 @@ async function runDockerBackup(name: string) {
     if (!current) return;
     saving.set(true);
     try {
-      await axios.post('/api/v1/docker/schedule', {
+      await axios.post('/api/v1/docker/schedule/', {
         name: current,
         day: $edited.day,
         hour: $edited.hour
@@ -207,7 +212,7 @@ async function runDockerBackup(name: string) {
         return;
       }
 
-      await axios.post('/api/v1/docker/schedule', {
+      await axios.post('/api/v1/docker/schedule/', {
         name,
         day: sched.day,
         hour: sched.hour
@@ -225,7 +230,7 @@ async function runDockerBackup(name: string) {
 
   async function deleteDockerSchedule(name: string) {
     try {
-      await axios.delete(`/api/v1/docker/schedule/${encodeURIComponent(name)}`);
+      await axios.delete(`/api/v1/docker/schedule/${encodeURIComponent(name)}/`);
       dockerSchedules.update(s => {
         const copy = { ...s };
         delete copy[name];

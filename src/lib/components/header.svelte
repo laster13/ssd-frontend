@@ -6,7 +6,7 @@
 	import type { Writable } from 'svelte/store';
 	import type { NavItem } from '$lib/types';
 	import { Mountain, MoreHorizontal } from 'lucide-svelte';
-        import { Plane } from 'lucide-svelte';
+  import { Plane } from 'lucide-svelte';
 	import ThemeSwitcher from '$lib/components/theme-switcher.svelte';
 	import NavigationItem from '$lib/components/header-item.svelte';
 	import { Button } from '$lib/components/ui/button';
@@ -20,10 +20,11 @@
 	];
 
 	let showMenu: Writable<boolean> = getContext('showMenu');
-
 	let applyBackdropBlur = () => {};
 
 	onMount(() => {
+		if (!browser) return;
+
 		const header = document.getElementById('header');
 
 		applyBackdropBlur = () => {
@@ -39,7 +40,7 @@
 		};
 
 		applyBackdropBlur();
-
+		window.addEventListener('scroll', applyBackdropBlur);
 	});
 
 	onDestroy(() => {

@@ -1,92 +1,85 @@
 <script lang="ts">
-    import { slide } from 'svelte/transition';
-    import { page } from '$app/stores';
-    import { getContext } from 'svelte';
-    import SuperDebug from 'sveltekit-superforms';
-    import { zodClient } from 'sveltekit-superforms/adapters';
-    import { type SuperValidated, type Infer, superForm } from 'sveltekit-superforms';
-    import * as Form from '$lib/components/ui/form';
-    import { seedboxSettingsSchema, type SeedboxSettingsSchema } from '$lib/forms/helpers';
-    import { toast } from 'svelte-sonner';
-    import TextField from './components/text-field.svelte';
-    import { Loader2 } from 'lucide-svelte';
-    import { Separator } from '$lib/components/ui/separator';
-    import RunScript from '../../routes/run-script.svelte';
-    import { onMount } from 'svelte';
-    import { goto } from '$app/navigation';
-    import CheckboxField from './components/checkbox-field.svelte';
+  import { slide } from 'svelte/transition';
+  import { page } from '$app/stores';
+  import { getContext, onMount } from 'svelte';
+  import SuperDebug from 'sveltekit-superforms';
+  import { zodClient } from 'sveltekit-superforms/adapters';
+  import { type SuperValidated, type Infer, superForm } from 'sveltekit-superforms';
+  import * as Form from '$lib/components/ui/form';
+  import { seedboxSettingsSchema, type SeedboxSettingsSchema } from '$lib/forms/helpers';
+  import { toast } from 'svelte-sonner';
+  import TextField from './components/text-field.svelte';
+  import { Loader2 } from 'lucide-svelte';
+  import { Separator } from '$lib/components/ui/separator';
+  import RunScript from '../../routes/run-script.svelte';
+  import { goto } from '$app/navigation';
+  import CheckboxField from './components/checkbox-field.svelte';
+  import { browser } from '$app/environment';
 
-    export let data: SuperValidated<Infer<SeedboxSettingsSchema>>;
-    export let actionUrl: string = '?/default';
-    export let label = "";
-    export let fieldDescription = ""; // Ajout de la description du champ
-    export let name;
-    export let scriptName: string = 'infos';
-    let isScriptCompleted = false;
+  export let data: SuperValidated<Infer<SeedboxSettingsSchema>>;
+  export let actionUrl: string = '?/default';
+  export let label = "";
+  export let fieldDescription = "";
+  export let name;
+  export let scriptName: string = 'infos';
 
-    const formDebug: boolean = getContext('formDebug');
+  let isScriptCompleted = false;
+  let isSubmitting = false;
+  let showSpinner = false;
+  let statusMessage = '';
+  let showLogs = false;
 
-    // Utilisation de superForm avec les validators et le schéma venant des helpers
-    const form = superForm(data, {
-        validators: zodClient(seedboxSettingsSchema),
-        dataType: "json",  // Permet de traiter correctement les données complexes
-    });
+  const formDebug: boolean = getContext('formDebug');
 
-    const { form: formData, enhance, message, delayed } = form;
+  const form = superForm(data, {
+    validators: zodClient(seedboxSettingsSchema),
+    dataType: "json",
+  });
 
-	let isSubmitting = false;
-	let showSpinner = false;
-	let statusMessage = '';
-        let showLogs = false;
+  const { form: formData, enhance, message, delayed } = form;
 
-	// Gérer la soumission du formulaire
-	function handleFormSuccess() {
-		console.log("Formulaire soumis avec succès.");
-		toast.success('Script déclenché: ' + scriptName);
+  function handleFormSuccess() {
+    console.log("Formulaire soumis avec succès.");
+    toast.success('Script déclenché: ' + scriptName);
 
-		// Vérification du dispatch de l'événement
-		console.log('Dispatching startScript event for:', scriptName);
-
-		// Envoyer un événement personnalisé à RunScript pour démarrer le script
-		const scriptEvent = new CustomEvent('startScript', { detail: { scriptName } });
-		window.dispatchEvent(scriptEvent); // Envoie l'événement globalement
-	}
-
-	// Fonction pour gérer l'état du bouton via les événements du composant RunScript
-	function updateButtonState(event) {
-		const { isSubmitting: submitting, showSpinner: spinner } = event.detail;
-		isSubmitting = submitting;
-		showSpinner = spinner;
-	}
-
-	// Fonction pour mettre à jour le message d'état du script
-	function updateStatusMessage(event) {
-		statusMessage = event.detail.statusMessage;
-	}
-
-    onMount(() => {
-        const uniqueParam = new Date().getTime();  // Crée un paramètre unique basé sur l'heure
-        const currentUrl = window.location.href;
-        
-        if (!currentUrl.includes('nocache')) {
-            window.location.href = `${currentUrl}?nocache=${uniqueParam}`;
-        }
-    });
-
-    function handleScriptCompleted() {
-        isScriptCompleted = true; // Marquer le script comme terminé
-        redirectToNextPage(); // Appeler la redirection une fois le script terminé
+    if (browser) {
+      console.log('Dispatching startScript event for:', scriptName);
+      const scriptEvent = new CustomEvent('startScript', { detail: { scriptName } });
+      window.dispatchEvent(scriptEvent);
     }
+  }
 
-    // Fonction de redirection conditionnelle
-    function redirectToNextPage() {
-        const currentPath = $page.url.pathname;
+  function updateButtonState(event: CustomEvent) {
+    const { isSubmitting: submitting, showSpinner: spinner } = event.detail;
+    isSubmitting = submitting;
+    showSpinner = spinner;
+  }
 
-        if (isScriptCompleted && currentPath === '/onboarding/3') {
-            goto('/onboarding/4'); // Redirige uniquement après la fin du script
-        }
+  function updateStatusMessage(event: CustomEvent) {
+    statusMessage = event.detail.statusMessage;
+  }
+
+  onMount(() => {
+    if (!browser) return;
+    const uniqueParam = new Date().getTime();
+    const currentUrl = window.location.href;
+
+    if (!currentUrl.includes('nocache')) {
+      window.location.href = `${currentUrl}?nocache=${uniqueParam}`;
     }
+  });
 
+  function handleScriptCompleted() {
+    isScriptCompleted = true;
+    redirectToNextPage();
+  }
+
+  function redirectToNextPage() {
+    const currentPath = $page.url.pathname;
+    if (isScriptCompleted && currentPath === '/onboarding/3') {
+      goto('/onboarding/4');
+    }
+  }
 </script>
 
 <!-- Formulaire principal avec utilisation du schéma pour la validation -->

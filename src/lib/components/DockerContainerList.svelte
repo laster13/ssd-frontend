@@ -2,6 +2,7 @@
 	import { onMount, onDestroy } from 'svelte';
 	import { Loader2 } from 'lucide-svelte';
 	import { Button } from '$lib/components/ui/button';
+	import { browser } from '$app/environment';
 
 	let containers = [];
 	let loading = true;
@@ -58,6 +59,7 @@
 	}
 
 	onMount(() => {
+		if (!browser) return;
 		loadContainers();
 		intervalId = setInterval(() => {
 			if (document.visibilityState === 'visible') {
@@ -67,9 +69,12 @@
 	});
 
 	onDestroy(() => {
+		if (!browser) return;
 		clearInterval(intervalId);
 	});
 </script>
+
+<!-- Le reste du composant HTML reste inchangé -->
 
 <div class="px-6 pt-32 pb-8">
 	<h2 class="text-xl font-semibold text-indigo-600 dark:text-indigo-400 mb-4">Conteneurs Docker</h2>
