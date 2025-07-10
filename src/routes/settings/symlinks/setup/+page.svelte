@@ -5,6 +5,8 @@
 
   const linksDir = writable('');
   const mountDir = writable('');
+  const radarrApiKey = writable('');
+  const sonarrApiKey = writable('');
   const message = writable('');
   const saving = writable(false);
 
@@ -13,8 +15,10 @@
       const res = await fetch('/api/v1/symlinks/config');
       if (res.ok) {
         const data = await res.json();
-        linksDir.set(data.links_dir);
-        mountDir.set(data.mount_dir);
+        linksDir.set(data.links_dir || '');
+        mountDir.set(data.mount_dir || '');
+        radarrApiKey.set(data.radarr_api_key || '');
+        sonarrApiKey.set(data.sonarr_api_key || '');
       } else {
         message.set('Erreur lors du chargement de la configuration');
       }
@@ -32,7 +36,9 @@
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           links_dir: $linksDir,
-          mount_dir: $mountDir
+          mount_dir: $mountDir,
+          radarr_api_key: $radarrApiKey,
+          sonarr_api_key: $sonarrApiKey
         })
       });
       if (res.ok) {
@@ -54,7 +60,7 @@
   <div class="space-y-1 w-full">
     <h1 class="text-2xl font-semibold">Configuration Alfred</h1>
     <p class="text-sm text-gray-600 dark:text-gray-400">
-      Définissez les dossiers utilisés pour les liens symboliques et les fichiers montés RealDebrid.
+      Définissez les dossiers utilisés pour les liens symboliques et les clés API de Radarr/Sonarr.
     </p>
   </div>
 
@@ -78,6 +84,30 @@
         type="text"
         bind:value={$mountDir}
         placeholder="/mnt/rd"
+        class="w-full rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-4 py-2 text-gray-900 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500"
+        required
+      />
+    </div>
+
+    <div>
+      <label for="radarrApiKey" class="block mb-2 font-medium">Clé API Radarr</label>
+      <input
+        id="radarrApiKey"
+        type="text"
+        bind:value={$radarrApiKey}
+        placeholder="xxxxxxxxxxxxxxxxxxxx"
+        class="w-full rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-4 py-2 text-gray-900 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500"
+        required
+      />
+    </div>
+
+    <div>
+      <label for="sonarrApiKey" class="block mb-2 font-medium">Clé API Sonarr</label>
+      <input
+        id="sonarrApiKey"
+        type="text"
+        bind:value={$sonarrApiKey}
+        placeholder="xxxxxxxxxxxxxxxxxxxx"
         class="w-full rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-4 py-2 text-gray-900 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500"
         required
       />
