@@ -15,7 +15,7 @@
 	const navItems: NavItem[] = [
 		{ name: 'Accueil', path: '/' },
 		{ name: 'Sauvegardes', path: '/settings/sauvegarde' },
-		{ name: 'Synthèse', path: '/summary' },
+		{ name: 'Symlinks', path: '/settings/symlinks' },
 		{ name: 'Paramètres', path: '/settings' }
 	];
 
