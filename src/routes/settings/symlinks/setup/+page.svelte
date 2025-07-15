@@ -1,22 +1,23 @@
 <script>
   import { onMount } from 'svelte';
   import { writable } from 'svelte/store';
-  import { Save, Loader2 } from 'lucide-svelte';
+  import { Save, Loader2, Trash2 } from 'lucide-svelte';
 
-  const linksDir = writable('');
-  const mountDir = writable('');
+  const linksDirs = writable([]);  // Tableau pour stocker plusieurs chemins de liens symboliques
+  const mountDirs = writable([]);  // Tableau pour stocker plusieurs chemins de montages
   const radarrApiKey = writable('');
   const sonarrApiKey = writable('');
   const message = writable('');
   const saving = writable(false);
 
+  // Fonction pour charger la configuration initiale
   async function loadConfig() {
     try {
       const res = await fetch('/api/v1/symlinks/config');
       if (res.ok) {
         const data = await res.json();
-        linksDir.set(data.links_dir || '');
-        mountDir.set(data.mount_dir || '');
+        linksDirs.set(data.links_dirs || []);
+        mountDirs.set(data.mount_dirs || []);
         radarrApiKey.set(data.radarr_api_key || '');
         sonarrApiKey.set(data.sonarr_api_key || '');
       } else {
@@ -27,6 +28,7 @@
     }
   }
 
+  // Fonction pour sauvegarder la configuration
   async function saveConfig() {
     saving.set(true);
     message.set('');
@@ -35,8 +37,8 @@
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          links_dir: $linksDir,
-          mount_dir: $mountDir,
+          links_dirs: $linksDirs,
+          mount_dirs: $mountDirs,
           radarr_api_key: $radarrApiKey,
           sonarr_api_key: $sonarrApiKey
         })
@@ -53,6 +55,27 @@
     }
   }
 
+  // Ajouter un chemin de lien symbolique
+  function addLinksDir() {
+    linksDirs.update(dirs => [...dirs, '']);
+  }
+
+  // Ajouter un chemin de montage
+  function addMountDir() {
+    mountDirs.update(dirs => [...dirs, '']);
+  }
+
+  // Supprimer un chemin de lien symbolique
+  function removeLinksDir(index) {
+    linksDirs.update(dirs => dirs.filter((_, i) => i !== index));
+  }
+
+  // Supprimer un chemin de montage
+  function removeMountDir(index) {
+    mountDirs.update(dirs => dirs.filter((_, i) => i !== index));
+  }
+
+  // Charger la configuration initiale
   onMount(loadConfig);
 </script>
 
@@ -65,30 +88,49 @@
   </div>
 
   <form class="w-full space-y-6" on:submit|preventDefault={saveConfig}>
+    <!-- Liste des chemins des liens symboliques -->
     <div>
-      <label for="linksDir" class="block mb-2 font-medium">Dossier des liens symboliques</label>
-      <input
-        id="linksDir"
-        type="text"
-        bind:value={$linksDir}
-        placeholder="/links"
-        class="w-full rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-4 py-2 text-gray-900 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500"
-        required
-      />
+      <label for="linksDirs" class="block mb-2 font-medium">Dossiers des liens symboliques</label>
+      {#each $linksDirs as linkDir, index}
+        <div class="flex items-center space-x-2">
+          <input
+            id="linksDir-{index}"
+            type="text"
+            bind:value={$linksDirs[index]}
+            placeholder="/links"
+            class="w-full rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-4 py-2 text-gray-900 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            required
+          />
+          <button type="button" on:click={() => removeLinksDir(index)} class="text-red-600">
+            <Trash2 class="w-5 h-5" />
+          </button>
+        </div>
+      {/each}
+      <button type="button" on:click={addLinksDir} class="text-blue-600">Ajouter un chemin</button>
     </div>
 
+    <!-- Liste des chemins des montages -->
     <div>
-      <label for="mountDir" class="block mb-2 font-medium">Dossier monté RealDebrid</label>
-      <input
-        id="mountDir"
-        type="text"
-        bind:value={$mountDir}
-        placeholder="/mnt/rd"
-        class="w-full rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-4 py-2 text-gray-900 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500"
-        required
-      />
+      <label for="mountDirs" class="block mb-2 font-medium">Dossiers montés RealDebrid</label>
+      {#each $mountDirs as mountDir, index}
+        <div class="flex items-center space-x-2">
+          <input
+            id="mountDir-{index}"
+            type="text"
+            bind:value={$mountDirs[index]}
+            placeholder="/mnt/rd"
+            class="w-full rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-4 py-2 text-gray-900 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            required
+          />
+          <button type="button" on:click={() => removeMountDir(index)} class="text-red-600">
+            <Trash2 class="w-5 h-5" />
+          </button>
+        </div>
+      {/each}
+      <button type="button" on:click={addMountDir} class="text-blue-600">Ajouter un chemin</button>
     </div>
 
+    <!-- Clés API -->
     <div>
       <label for="radarrApiKey" class="block mb-2 font-medium">Clé API Radarr</label>
       <input

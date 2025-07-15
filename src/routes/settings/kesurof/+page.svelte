@@ -1,298 +1,322 @@
 <script>
-  import { onMount } from 'svelte';
-  import { writable, derived, get } from 'svelte/store';
-  import {
-    Search, Eye, Trash, RefreshCw, Info, Scan,
-    Download, Upload, Filter, Loader2, CheckCircle2, ShieldCheck
-  } from 'lucide-svelte';
-  import { goto } from '$app/navigation';
+    import { onMount } from 'svelte';
+    import { writable, derived, get } from 'svelte/store';
+    import {
+        Search, Eye, Trash, RefreshCw, Info, Scan,
+        Download, Upload, Filter, Loader2, CheckCircle2
+    } from 'lucide-svelte';
+    import { goto } from '$app/navigation';
 
-  const baseURL = import.meta.env.DEV
-    ? import.meta.env.VITE_BACKEND_URL_HTTP
-    : import.meta.env.VITE_BACKEND_URL_HTTPS;
+	// 🔍 LOG ici pour déboguer les variables d'environnement injectées par Vite
+	console.log("🧪 import.meta.env :", import.meta.env);
 
-  const createRequest = async (url, options = {}, errorMessage = 'Erreur réseau') => {
-    try {
-      const res = await fetch(url, options);
-      if (!res.ok) throw new Error(`${errorMessage} : ${res.status}`);
-      return await res.json();
-    } catch (err) {
-      throw new Error(err.message || errorMessage);
+    const baseURL = import.meta.env.DEV
+      ? import.meta.env.VITE_BACKEND_URL_HTTP
+      : import.meta.env.VITE_BACKEND_URL_HTTPS;
+    console.log("🌍 baseURL utilisé :", baseURL);
+
+    const symlinks = writable([]);
+    const search = writable('');
+    const rowsPerPage = writable(10);
+    const currentPage = writable(1);
+    const scanStatus = writable(false);
+    const selected = writable([]);
+    const showOrphansOnly = writable(false);
+    const logs = writable([]);
+    const linksDir = writable('');
+    const totalItems = writable(0);
+    const orphaned = writable(0);
+    const uniqueTargets = writable(0);
+
+    const exporting = writable(false);
+    const exportSuccess = writable(false);
+
+    const importing = writable(false);
+    const importSuccess = writable(false);
+
+    const refreshing = writable(false);
+    const refreshSuccess = writable(false);
+
+    const scanning = writable(false);
+    const scanSuccess = writable(false);
+
+    const deleting = writable({});
+    const deleteSuccess = writable({});
+
+    let sortedColumn = null;
+    let ascending = true;
+    let mounted = false;
+
+
+    $: if (mounted && $search !== undefined) {
+        currentPage.set(1);
+        refreshList();
     }
-  };
 
-  const rdtmStats = writable({
-    scans_completed: 0,
-    torrents_processed: 0,
-    reinjections: { successful: 0, attempted: 0 },
-    mode: '',
-  });
-
-  const loadingStats = writable(false);
-  const statsError = writable(null);
-
-  async function fetchRdtmStats() {
-    loadingStats.set(true);
-    statsError.set(null);
-    try {
-      const data = await createRequest(`${baseURL}/api/v1/rdtm/stats`, {}, 'Erreur API RDTM');
-      rdtmStats.set(data);
-    } catch (err) {
-      statsError.set(err.message);
-    } finally {
-      loadingStats.set(false);
+    $: if (mounted && $showOrphansOnly !== undefined) {
+        refreshList();
     }
-  }
 
-  async function runMaintenance() {
-    try {
-      await createRequest(`${baseURL}/api/v1/rdtm/maintenance`, { method: 'POST' }, 'Erreur maintenance');
-      logs.update(l => [`Maintenance RDTM effectuée`, ...l]);
-      fetchRdtmStats();
-    } catch (e) {
-      logs.update(l => [`Erreur maintenance RDTM : ${e.message}`, ...l]);
+    function sortBy(column) {
+        if (sortedColumn === column) {
+            ascending = !ascending;
+        } else {
+            sortedColumn = column;
+            ascending = true;
+        }
+        refreshList();
     }
-  }
 
-  const symlinks = writable([]);
-  const search = writable('');
-  const rowsPerPage = writable(10);
-  const currentPage = writable(1);
-  const scanStatus = writable(false);
-  const selected = writable([]);
-  const showOrphansOnly = writable(false);
-  const logs = writable([]);
-  const linksDir = writable('');
-  const totalItems = writable(0);
-  const orphaned = writable(0);
-  const uniqueTargets = writable(0);
-
-  const exporting = writable(false);
-  const exportSuccess = writable(false);
-
-  const importing = writable(false);
-  const importSuccess = writable(false);
-
-  const refreshing = writable(false);
-  const refreshSuccess = writable(false);
-
-  const scanning = writable(false);
-  const scanSuccess = writable(false);
-
-  const deleting = writable({});
-  const deleteSuccess = writable({});
-
-  let sortedColumn = null;
-  let ascending = true;
-  let mounted = false;
-
-  $: if (mounted && $search !== undefined) {
-    currentPage.set(1);
-    refreshList();
-  }
-
-  $: if (mounted && $showOrphansOnly !== undefined) {
-    refreshList();
-  }
-
-  function sortBy(column) {
-    if (sortedColumn === column) {
-      ascending = !ascending;
-    } else {
-      sortedColumn = column;
-      ascending = true;
-    }
-    refreshList();
-  }
-
-  const totalPages = derived([totalItems, rowsPerPage], ([$total, $perPage]) =>
-    Math.ceil($total / $perPage)
-  );
-
-  async function loadConfig() {
-    try {
-      const config = await createRequest(`${baseURL}/api/v1/symlinks/config`, {}, 'Erreur config');
-      linksDir.set(config.links_dir.endsWith('/') ? config.links_dir : config.links_dir + '/');
-    } catch (e) {
-      console.error(e.message);
-    }
-  }
-
-  function changePage(offset) {
-    currentPage.update(n => {
-      const newPage = Math.max(1, n + offset);
-      refreshList();
-      return newPage;
-    });
-  }
-
-  function toggleSelected(item) {
-    selected.update(list =>
-      list.includes(item)
-        ? list.filter(i => i !== item)
-        : [...list, item]
+    const totalPages = derived([totalItems, rowsPerPage], ([$total, $perPage]) =>
+        Math.ceil($total / $perPage)
     );
-  }
 
-  function viewSymlink(item) {
-    alert(`Symlink: ${item.symlink}\nTarget: ${item.target}\nRef Count: ${item.ref_count}`);
-  }
-
-  async function deleteSymlink(item) {
-    let baseDir = get(linksDir);
-    if (!baseDir.endsWith('/')) baseDir += '/';
-
-    let relativePath = item.symlink.startsWith(baseDir)
-      ? item.symlink.slice(baseDir.length)
-      : item.symlink;
-
-    if (relativePath.startsWith('/')) {
-      relativePath = relativePath.slice(1);
+    async function loadConfig() {
+        try {
+            const res = await fetch(`${baseURL}/api/v1/symlinks/config`);
+            if (res.ok) {
+                const config = await res.json();
+                linksDir.set(config.links_dir.endsWith('/') ? config.links_dir : config.links_dir + '/');
+            }
+        } catch (e) {
+            console.error('Erreur de chargement de config :', e);
+        }
     }
 
-    deleting.update(state => ({ ...state, [item.symlink]: true }));
-    deleteSuccess.update(state => ({ ...state, [item.symlink]: false }));
-
-    try {
-      await createRequest(`${baseURL}/api/v1/symlinks/delete/${encodeURIComponent(relativePath)}`, { method: 'DELETE' }, 'Erreur suppression');
-      logs.update(list => [`Deleted ${item.symlink}`, ...list]);
-      deleteSuccess.update(state => ({ ...state, [item.symlink]: true }));
-      setTimeout(() => deleteSuccess.update(state => ({ ...state, [item.symlink]: false })), 2000);
-      await triggerScan();
-    } catch (e) {
-      alert(e.message);
-    } finally {
-      deleting.update(state => ({ ...state, [item.symlink]: false }));
+    function changePage(offset) {
+        currentPage.update(n => {
+            const newPage = Math.max(1, n + offset);
+            refreshList();
+            return newPage;
+        });
     }
-  }
 
-  function exportJSON() {
-    exporting.set(true);
-    exportSuccess.set(false);
-
-    symlinks.subscribe(data => {
-      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = 'symlinks_backup.json';
-      a.click();
-      URL.revokeObjectURL(url);
-      exporting.set(false);
-      exportSuccess.set(true);
-      setTimeout(() => exportSuccess.set(false), 2000);
-    })();
-  }
-
-  function importJSON(event) {
-    const file = event.target.files[0];
-    if (!file) return;
-
-    importing.set(true);
-    importSuccess.set(false);
-
-    const reader = new FileReader();
-    reader.onload = () => {
-      try {
-        const imported = JSON.parse(reader.result);
-        symlinks.set(imported);
-        logs.update(list => [`Imported ${imported.length} symlinks`, ...list]);
-        importSuccess.set(true);
-        setTimeout(() => importSuccess.set(false), 2000);
-      } catch (e) {
-        alert('Invalid JSON');
-      } finally {
-        importing.set(false);
-      }
-    };
-    reader.readAsText(file);
-  }
-
-  async function triggerScan() {
-    scanning.set(true);
-    scanSuccess.set(false);
-
-    try {
-      const json = await createRequest(`${baseURL}/api/v1/symlinks/scan`, { method: 'POST' }, 'Erreur scan');
-      symlinks.set(json.data);
-      logs.update(l => [`Scan réussi avec ${json.count} liens`, ...l]);
-      scanSuccess.set(true);
-      setTimeout(() => scanSuccess.set(false), 2000);
-    } catch (e) {
-      logs.update(l => [`Erreur réseau lors du scan : ${e.message}`]);
-    } finally {
-      scanning.set(false);
+    function toggleSelected(item) {
+        selected.update(list =>
+            list.includes(item)
+                ? list.filter(i => i !== item)
+                : [...list, item]
+        );
     }
-  }
 
-  async function refreshList() {
-    refreshing.set(true);
-    refreshSuccess.set(false);
-
-    try {
-      const page = get(currentPage);
-      const limit = get(rowsPerPage);
-      const searchTerm = get(search);
-      const orphansOnly = get(showOrphansOnly);
-      const sort = sortedColumn || 'symlink';
-      const order = ascending ? 'asc' : 'desc';
-
-      const params = new URLSearchParams({
-        page: String(page),
-        limit: String(limit),
-        sort,
-        order
-      });
-
-      if (searchTerm.trim()) params.append('search', searchTerm.trim());
-      if (orphansOnly) params.append('orphans', 'true');
-
-      const json = await createRequest(`${baseURL}/api/v1/symlinks?${params.toString()}`, {}, 'Erreur refresh');
-      symlinks.set(json.data);
-      totalItems.set(json.total);
-      orphaned.set(json.orphaned || 0);
-      uniqueTargets.set(json.unique_targets || 0);
-      logs.update(l => [`Liste rafraîchie (page ${json.page})`, ...l]);
-      refreshSuccess.set(true);
-      setTimeout(() => refreshSuccess.set(false), 2000);
-    } catch (e) {
-      logs.update(l => [`Erreur réseau : ${e.message}`]);
-    } finally {
-      refreshing.set(false);
+    function viewSymlink(item) {
+        alert(`Symlink: ${item.symlink}\nTarget: ${item.target}\nRef Count: ${item.ref_count}`);
     }
-  }
 
-  onMount(() => {
-    mounted = true;
-    loadConfig();
-    refreshList();
-    fetchRdtmStats();
+    async function deleteSymlink(item) {
+        const fullPath = item.symlink;
+        let baseDir = '';
+        linksDir.subscribe(value => (baseDir = value))();
+        if (!baseDir.endsWith('/')) baseDir += '/';
 
-    const unsubscribe = showOrphansOnly.subscribe(() => {
-      refreshList();
+        let relativePath = fullPath.startsWith(baseDir)
+            ? fullPath.slice(baseDir.length)
+            : fullPath;
+
+        if (relativePath.startsWith('/')) {
+            relativePath = relativePath.slice(1);
+        }
+
+        deleting.update(state => ({ ...state, [item.symlink]: true }));
+        deleteSuccess.update(state => ({ ...state, [item.symlink]: false }));
+
+        try {
+            const res = await fetch(`${baseURL}/api/v1/symlinks/delete/${encodeURIComponent(relativePath)}`, {
+                method: 'DELETE'
+            });
+
+            if (!res.ok) {
+                const error = await res.json();
+                alert(`Erreur suppression : ${error.detail || res.status}`);
+                return;
+            }
+
+            logs.update(list => [`Deleted ${item.symlink}`, ...list]);
+            deleteSuccess.update(state => ({ ...state, [item.symlink]: true }));
+            setTimeout(() => {
+                deleteSuccess.update(state => ({ ...state, [item.symlink]: false }));
+            }, 2000);
+
+            await triggerScan();
+        } catch (e) {
+            alert('Erreur réseau lors de la suppression');
+        } finally {
+            deleting.update(state => ({ ...state, [item.symlink]: false }));
+        }
+    }
+
+    function exportJSON() {
+        exporting.set(true);
+        exportSuccess.set(false);
+
+        symlinks.subscribe(data => {
+            const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'symlinks_backup.json';
+            a.click();
+            URL.revokeObjectURL(url);
+            exporting.set(false);
+            exportSuccess.set(true);
+            setTimeout(() => exportSuccess.set(false), 2000);
+        })();
+    }
+
+    function importJSON(event) {
+        const file = event.target.files[0];
+        if (!file) return;
+
+        importing.set(true);
+        importSuccess.set(false);
+
+        const reader = new FileReader();
+        reader.onload = () => {
+            try {
+                const imported = JSON.parse(reader.result);
+                symlinks.set(imported);
+                logs.update(list => [`Imported ${imported.length} symlinks`, ...list]);
+                importSuccess.set(true);
+                setTimeout(() => importSuccess.set(false), 2000);
+            } catch (e) {
+                alert('Invalid JSON');
+            } finally {
+                importing.set(false);
+            }
+        };
+        reader.readAsText(file);
+    }
+
+    async function triggerScan() {
+        scanning.set(true);
+        scanSuccess.set(false);
+
+        try {
+            const res = await fetch(`${baseURL}/api/v1/symlinks/scan`, { method: 'POST' });
+            if (res.ok) {
+                const json = await res.json();
+                symlinks.set(json.data);
+                logs.update(l => [`Scan réussi avec ${json.count} liens`, ...l]);
+                scanSuccess.set(true);
+                setTimeout(() => scanSuccess.set(false), 2000);
+            } else {
+                logs.update(l => [`Erreur lors du scan : ${res.status}`, ...l]);
+            }
+        } catch (e) {
+            logs.update(l => [`Erreur réseau lors du scan : ${e.message}`, ...l]);
+        } finally {
+            scanning.set(false);
+        }
+    }
+
+    async function refreshList() {
+        refreshing.set(true);
+        refreshSuccess.set(false);
+
+        try {
+            const searchTerm = get(search);
+            const orphansOnly = get(showOrphansOnly);
+            const sort = sortedColumn || 'symlink';
+            const order = ascending ? 'asc' : 'desc';
+
+            const params = new URLSearchParams({ sort, order });
+            if (searchTerm.trim()) {
+                params.append('search', searchTerm.trim());
+            }
+            if (orphansOnly) {
+                params.append('orphans', 'true');
+            }
+
+            const url = `${baseURL}/api/v1/symlinks?${params.toString()}`;
+            console.log('📡 Requête vers :', url);
+
+            let res = await fetch(url);
+
+            // 🛠 Si cache vide, on déclenche un scan automatiquement
+            if (res.status === 503) {
+                console.warn('⚠️ Cache vide. Déclenchement du scan automatique...');
+
+                const scanRes = await fetch(`${baseURL}/api/v1/symlinks/scan`, { method: 'POST' });
+                const scanJson = await scanRes.json();
+
+                if (!scanRes.ok) {
+                    throw new Error(`Erreur lors du scan : ${scanRes.status} ${scanJson?.detail || ''}`);
+                }
+
+                console.log(`✅ Scan terminé (${scanJson.count} symlinks)`);
+
+                // 🔁 Relancer la requête après scan
+                res = await fetch(url);
+            }
+
+            if (!res.ok) {
+                const errorText = await res.text();
+                console.error('❌ Erreur HTTP:', res.status, errorText);
+                throw new Error(`Erreur HTTP ${res.status}: ${errorText}`);
+            }
+
+            const json = await res.json();
+
+            symlinks.set(json.data);
+            totalItems.set(json.total);
+            orphaned.set(json.orphaned || 0);
+            uniqueTargets.set(json.unique_targets || 0);
+
+            logs.update(l => [`✅ Liste rafraîchie (${json.total} éléments)`, ...l]);
+            refreshSuccess.set(true);
+            setTimeout(() => refreshSuccess.set(false), 2000);
+
+        } catch (e) {
+            console.error('⛔ Exception dans refreshList:', e);
+            logs.update(l => [`❌ Erreur réseau ou parsing : ${e.message}`, ...l]);
+        } finally {
+            refreshing.set(false);
+        }
+    }
+
+    onMount(() => {
+        mounted = true;
+        loadConfig();
+        refreshList();
+
+        // 🔁 Rafraîchit la liste si on toggle les orphelins
+        const unsubscribe = showOrphansOnly.subscribe(() => {
+            refreshList();
+        });
+
+        // 🔌 Connexion au flux SSE
+        const eventSource = new EventSource(`${baseURL}/api/v1/symlinks/events`);
+
+        eventSource.onmessage = (event) => {
+            console.log("🔄 Événement SSE reçu :", event.data);
+
+            try {
+                const parsed = JSON.parse(event.data);
+                console.log("📦 Données SSE parsées :", parsed);
+
+                if (typeof refreshList === 'function') {
+                    console.log("📞 Appel automatique de refreshList()");
+                    refreshList();
+                } else {
+                    console.warn("⚠️ refreshList() n'est pas défini");
+                }
+            } catch (e) {
+                console.error("❌ Erreur de parsing SSE :", e);
+            }
+        };
+
+        eventSource.onerror = (error) => {
+            console.error("❌ Erreur SSE :", error);
+            eventSource.close();
+        };
+
+        // 🔚 Nettoyage à la destruction du composant
+        return () => {
+            eventSource.close();
+            unsubscribe(); // utile si showOrphansOnly est un store externe
+        };
     });
 
-    const eventSource = new EventSource(`${baseURL}/api/v1/symlinks/events`);
-
-    eventSource.onmessage = (event) => {
-      try {
-        const parsed = JSON.parse(event.data);
-        if (typeof refreshList === 'function') refreshList();
-      } catch (e) {
-        console.error("❌ Erreur de parsing SSE :", e);
-      }
-    };
-
-    eventSource.onerror = (error) => {
-      console.error("❌ Erreur SSE :", error);
-      eventSource.close();
-    };
-
-    return () => {
-      eventSource.close();
-      unsubscribe();
-    };
-  });
 </script>
 <main class="container mx-auto p-4 sm:p-6 md:p-8 space-y-6 min-h-screen bg-white text-gray-900 dark:bg-gray-900 dark:text-gray-200">
 
@@ -406,47 +430,6 @@
       <h2 class="text-xl font-bold">{$uniqueTargets}</h2>
     </div>
   </div>
-
-<!-- Ajout dans ton layout -->
-<section class="space-y-4">
-  <h2 class="text-xl font-semibold">RDTM Status</h2>
-  <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
-    <div class="bg-gray-100 dark:bg-gray-800 p-4 rounded shadow">
-      <p class="text-sm text-gray-600 dark:text-gray-400">Mode</p>
-      <h2 class="text-lg font-semibold">{$rdtmStats.mode || 'N/A'}</h2>
-    </div>
-    <div class="bg-gray-100 dark:bg-gray-800 p-4 rounded shadow">
-      <p class="text-sm text-gray-600 dark:text-gray-400">Scans effectués</p>
-      <h2 class="text-lg font-semibold">{$rdtmStats.scans_completed}</h2>
-    </div>
-    <div class="bg-gray-100 dark:bg-gray-800 p-4 rounded shadow">
-      <p class="text-sm text-gray-600 dark:text-gray-400">Torrents traités</p>
-      <h2 class="text-lg font-semibold">{$rdtmStats.torrents_processed}</h2>
-    </div>
-    <div class="bg-gray-100 dark:bg-gray-800 p-4 rounded shadow">
-      <p class="text-sm text-gray-600 dark:text-gray-400">Réinjections</p>
-      <h2 class="text-lg font-semibold">
-        {$rdtmStats.reinjections.successful}/{$rdtmStats.reinjections.attempted}
-      </h2>
-    </div>
-  </div>
-
-  <div class="flex justify-end gap-2 mt-4">
-    <button on:click={fetchRdtmStats} class="btn btn-blue">
-      {#if $loadingStats}
-        <Loader2 class="w-4 h-4 animate-spin" /> Rafraîchir stats
-      {:else if $statsError}
-        <span class="text-red-500">{$statsError}</span>
-      {:else}
-        <CheckCircle2 class="w-4 h-4" /> Réactualiser
-      {/if}
-    </button>
-    <button on:click={runMaintenance} class="btn btn-emerald-deep">
-      <ShieldCheck class="w-4 h-4" /> Maintenance RDTM
-    </button>
-  </div>
-</section>
-
 
   <!-- Sélecteur de pagination -->
   <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mt-6">

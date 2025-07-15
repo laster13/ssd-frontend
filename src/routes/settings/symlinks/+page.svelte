@@ -1,6 +1,8 @@
 <script>
     import { onMount } from 'svelte';
     import { writable, derived, get } from 'svelte/store';
+    import { FolderSearch } from 'lucide-svelte';
+
     import {
         Search, Eye, Trash, RefreshCw, Info, Scan,
         Download, Upload, Filter, Loader2, CheckCircle2
@@ -14,6 +16,7 @@
       ? import.meta.env.VITE_BACKEND_URL_HTTP
       : import.meta.env.VITE_BACKEND_URL_HTTPS;
     console.log("🌍 baseURL utilisé :", baseURL);
+
 
     const symlinks = writable([]);
     const search = writable('');
@@ -43,9 +46,20 @@
     const deleting = writable({});
     const deleteSuccess = writable({});
 
+    const selectedDir = writable('');
+    const availableDirs = writable([]);
+
+    const bulkDeleting = writable(false);
+    const bulkDeleteSuccess = writable(false);
+    const allSymlinks = writable([]);
+
+
+
+
     let sortedColumn = null;
     let ascending = true;
     let mounted = false;
+export const allBrokenCount = writable(0)
 
 
     $: if (mounted && $search !== undefined) {
@@ -56,6 +70,10 @@
     $: if (mounted && $showOrphansOnly !== undefined) {
         refreshList();
     }
+
+// 🧮 Nombre de symlinks cassés
+$: brokenCount = $symlinks.filter(i => i.ref_count === 0 || i.target_exists === false).length;
+
 
     function sortBy(column) {
         if (sortedColumn === column) {
@@ -71,17 +89,98 @@
         Math.ceil($total / $perPage)
     );
 
-    async function loadConfig() {
-        try {
-            const res = await fetch(`${baseURL}/api/v1/symlinks/config`);
-            if (res.ok) {
-                const config = await res.json();
-                linksDir.set(config.links_dir.endsWith('/') ? config.links_dir : config.links_dir + '/');
-            }
-        } catch (e) {
-            console.error('Erreur de chargement de config :', e);
-        }
+
+// Pluriel simple
+function s(count) {
+  return count > 1 ? 's' : '';
+}
+
+async function deleteAllBrokenSymlinks() {
+  const folder = get(selectedDir);
+  const isAll = folder === '';
+  const isShows = folder && folder.toLowerCase().includes('show');
+  const isMovies = folder && folder.toLowerCase().includes('movie');
+
+  let urlRadarr = `${baseURL}/api/v1/symlinks/delete_broken`;
+  let urlSonarr = `${baseURL}/api/v1/symlinks/delete_broken_sonarr`;
+
+  if (folder) {
+    const encoded = encodeURIComponent(folder);
+    urlRadarr += `?folder=${encoded}`;
+    urlSonarr += `?folder=${encoded}`;
+  }
+
+  let urlsToCall = [];
+
+  if (isAll) {
+    const confirmAll = confirm("🗑️ Supprimer TOUS les symlinks cassés (Radarr + Sonarr) ?");
+    if (!confirmAll) return;
+    urlsToCall = [
+      { name: 'Radarr', url: urlRadarr },
+      { name: 'Sonarr', url: urlSonarr }
+    ];
+  } else if (isMovies) {
+    urlsToCall = [{ name: 'Radarr', url: urlRadarr }];
+  } else if (isShows) {
+    urlsToCall = [{ name: 'Sonarr', url: urlSonarr }];
+  } else {
+    // Sécurité : si on ne sait pas quoi faire
+    alert("❓ Type de dossier inconnu : suppression annulée.");
+    return;
+  }
+
+  bulkDeleting.set(true);
+  bulkDeleteSuccess.set(false);
+
+  try {
+    const results = await Promise.all(
+      urlsToCall.map(entry => fetch(entry.url, { method: 'POST' }))
+    );
+
+    const jsons = await Promise.all(
+      results.map(r => r.ok ? r.json() : { deleted: 0 })
+    );
+
+    const messages = jsons.map((j, i) => `✅ ${j.deleted || 0} supprimé(s) via ${urlsToCall[i].name}`);
+    logs.update(l => [...messages, ...l]);
+
+    bulkDeleteSuccess.set(true);
+    refreshList();
+    setTimeout(() => bulkDeleteSuccess.set(false), 3000);
+  } catch (e) {
+    alert("❌ Échec suppression");
+    console.error(e);
+  } finally {
+    bulkDeleting.set(false);
+  }
+}
+
+async function loadConfig() {
+  try {
+    const res = await fetch(`${baseURL}/api/v1/symlinks/config`);
+    if (res.ok) {
+      const config = await res.json();
+      const firstDir = Array.isArray(config.links_dirs) ? config.links_dirs[0] : '';
+      if (firstDir) {
+        linksDir.set(firstDir.endsWith('/') ? firstDir : firstDir + '/');
+      } else {
+        console.warn('⚠️ Aucun répertoire trouvé dans config.links_dirs');
+      }
     }
+
+    // 🔽 Charger les sous-dossiers pour le filtre
+    const foldersRes = await fetch(`${baseURL}/api/v1/symlinks/folders`);
+    if (foldersRes.ok) {
+      const folders = await foldersRes.json();
+      availableDirs.set(folders);
+    } else {
+      console.warn('⚠️ Impossible de charger les sous-dossiers de Medias');
+    }
+
+  } catch (e) {
+    console.error('Erreur de chargement de config ou dossiers :', e);
+  }
+}
 
     function changePage(offset) {
         currentPage.update(n => {
@@ -103,47 +202,52 @@
         alert(`Symlink: ${item.symlink}\nTarget: ${item.target}\nRef Count: ${item.ref_count}`);
     }
 
-    async function deleteSymlink(item) {
-        const fullPath = item.symlink;
-        let baseDir = '';
-        linksDir.subscribe(value => (baseDir = value))();
-        if (!baseDir.endsWith('/')) baseDir += '/';
+async function deleteSymlink(item) {
+    const fullPath = item.symlink;
+    let baseDir = get(linksDir);
+    if (!baseDir.endsWith('/')) baseDir += '/';
 
-        let relativePath = fullPath.startsWith(baseDir)
-            ? fullPath.slice(baseDir.length)
-            : fullPath;
+    let relativePath = fullPath.startsWith(baseDir)
+        ? fullPath.slice(baseDir.length)
+        : fullPath;
 
-        if (relativePath.startsWith('/')) {
-            relativePath = relativePath.slice(1);
-        }
-
-        deleting.update(state => ({ ...state, [item.symlink]: true }));
-        deleteSuccess.update(state => ({ ...state, [item.symlink]: false }));
-
-        try {
-            const res = await fetch(`${baseURL}/api/v1/symlinks/delete/${encodeURIComponent(relativePath)}`, {
-                method: 'DELETE'
-            });
-
-            if (!res.ok) {
-                const error = await res.json();
-                alert(`Erreur suppression : ${error.detail || res.status}`);
-                return;
-            }
-
-            logs.update(list => [`Deleted ${item.symlink}`, ...list]);
-            deleteSuccess.update(state => ({ ...state, [item.symlink]: true }));
-            setTimeout(() => {
-                deleteSuccess.update(state => ({ ...state, [item.symlink]: false }));
-            }, 2000);
-
-            await triggerScan();
-        } catch (e) {
-            alert('Erreur réseau lors de la suppression');
-        } finally {
-            deleting.update(state => ({ ...state, [item.symlink]: false }));
-        }
+    if (relativePath.startsWith('/')) {
+        relativePath = relativePath.slice(1);
     }
+
+    // 🧠 Choix de la route selon item.type
+    const route =
+        item.type === 'sonarr'
+            ? `/api/v1/symlinks/delete-sonarr/${encodeURIComponent(relativePath)}`
+            : `/api/v1/symlinks/delete/${encodeURIComponent(relativePath)}`;
+
+    deleting.update(state => ({ ...state, [item.symlink]: true }));
+    deleteSuccess.update(state => ({ ...state, [item.symlink]: false }));
+
+    try {
+        const res = await fetch(`${baseURL}${route}`, {
+            method: 'DELETE'
+        });
+
+        if (!res.ok) {
+            const error = await res.json();
+            alert(`Erreur suppression : ${error.detail || res.status}`);
+            return;
+        }
+
+        logs.update(list => [`🗑️ Supprimé : ${item.symlink}`, ...list]);
+        deleteSuccess.update(state => ({ ...state, [item.symlink]: true }));
+        setTimeout(() => {
+            deleteSuccess.update(state => ({ ...state, [item.symlink]: false }));
+        }, 2000);
+
+        await triggerScan();
+    } catch (e) {
+        alert('Erreur réseau lors de la suppression');
+    } finally {
+        deleting.update(state => ({ ...state, [item.symlink]: false }));
+    }
+}
 
     function exportJSON() {
         exporting.set(true);
@@ -190,6 +294,7 @@
     async function triggerScan() {
         scanning.set(true);
         scanSuccess.set(false);
+        allSymlinks.set(true);
 
         try {
             const res = await fetch(`${baseURL}/api/v1/symlinks/scan`, { method: 'POST' });
@@ -238,6 +343,11 @@
                 params.append('orphans', 'true');
             }
 
+            const folder = get(selectedDir);
+            if (folder) {
+              params.append('folder', folder);
+            }
+
             const res = await fetch(`${baseURL}/api/v1/symlinks?${params.toString()}`);
             if (!res.ok) throw new Error(`Erreur serveur ${res.status}`);
 
@@ -245,6 +355,7 @@
             symlinks.set(json.data);
             totalItems.set(json.total);
             orphaned.set(json.orphaned || 0);
+            allBrokenCount.set(json.orphaned || 0); 
             uniqueTargets.set(json.unique_targets || 0);
 
             logs.update(l => [`Liste rafraîchie (page ${json.page})`, ...l]);
@@ -300,8 +411,9 @@
         };
     });
 
+
 </script>
-<main class="container mx-auto p-4 sm:p-6 md:p-8 space-y-6 min-h-screen bg-white text-gray-900 dark:bg-gray-900 dark:text-gray-200">
+<main class="w-full min-h-screen p-4 sm:p-6 md:p-8 space-y-6 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-200">
 
   <!-- ✅ Barre d'actions responsive unifiée -->
   <div class="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-4">
@@ -314,8 +426,23 @@
         </summary>
         <div class="absolute z-10 mt-1 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg shadow-md p-2 space-y-2 w-52">
           <button on:click={() => showOrphansOnly.update(v => !v)} class="btn btn-emerald-deep w-full justify-start">
-            <Filter class="w-4 h-4" /> Toggle Orphans
+            <Filter class="w-4 h-4" /> Symlinks Brisés
           </button>
+{#if $allBrokenCount > 0}
+  <button on:click={deleteAllBrokenSymlinks} class="btn btn-red-deep w-full justify-start" disabled={$bulkDeleting}>
+    {#if $bulkDeleting}
+      <Loader2 class="w-4 h-4 animate-spin text-white" />
+      Suppression...
+    {:else if $bulkDeleteSuccess}
+      <CheckCircle2 class="w-4 h-4 text-white" />
+      Supprimés !
+    {:else}
+      <Trash class="w-4 h-4" />
+      Supprimer {$allBrokenCount} symlink{s($allBrokenCount)} cassé{s($allBrokenCount)}
+    {/if}
+  </button>
+{/if}
+
           <button on:click={exportJSON} class="btn btn-indigo-deep w-full justify-start">
             {#if $exporting}
               <Loader2 class="w-4 h-4 animate-spin" />
@@ -340,30 +467,48 @@
     </div>
 
     <!-- 👈 Boutons desktop -->
-    <div class="hidden md:flex flex-wrap gap-2">
-      <button on:click={() => showOrphansOnly.update(v => !v)} class="btn btn-emerald-deep">
-        <Filter class="w-4 h-4" /> Toggle Orphans
-      </button>
-      <button on:click={exportJSON} class="btn btn-indigo-deep">
-        {#if $exporting}
-          <Loader2 class="w-4 h-4 animate-spin" />
-        {:else if $exportSuccess}
-          <CheckCircle2 class="w-4 h-4 text-white" /> Exported
-        {:else}
-          <Download class="w-4 h-4" /> Export
-        {/if}
-      </button>
-      <label class="btn btn-cyan-deep cursor-pointer">
-        {#if $importing}
-          <Loader2 class="w-4 h-4 animate-spin" />
-        {:else if $importSuccess}
-          <CheckCircle2 class="w-4 h-4 text-white" /> Imported
-        {:else}
-          <Upload class="w-4 h-4" /> Import
-        {/if}
-        <input type="file" accept="application/json" class="hidden" on:change={importJSON} />
-      </label>
-    </div>
+<!-- 👈 Boutons desktop -->
+<div class="hidden md:flex flex-wrap gap-2">
+  <button on:click={() => showOrphansOnly.update(v => !v)} class="btn btn-emerald-deep">
+    <Filter class="w-4 h-4" /> Symlinks brisés
+  </button>
+
+  {#if $allBrokenCount > 0}
+    <button on:click={deleteAllBrokenSymlinks} class="btn btn-red-deep" disabled={$bulkDeleting}>
+      {#if $bulkDeleting}
+        <Loader2 class="w-4 h-4 animate-spin text-white" />
+        Suppression...
+      {:else if $bulkDeleteSuccess}
+        <CheckCircle2 class="w-4 h-4 text-white" />
+        Supprimés !
+      {:else}
+        <Trash class="w-4 h-4" />
+        Supprimer {$allBrokenCount} symlink{s($allBrokenCount)} cassé{s($allBrokenCount)}
+      {/if}
+    </button>
+  {/if}
+
+  <button on:click={exportJSON} class="btn btn-indigo-deep">
+    {#if $exporting}
+      <Loader2 class="w-4 h-4 animate-spin" />
+    {:else if $exportSuccess}
+      <CheckCircle2 class="w-4 h-4 text-white" /> Exported
+    {:else}
+      <Download class="w-4 h-4" /> Export
+    {/if}
+  </button>
+
+  <label class="btn btn-cyan-deep cursor-pointer">
+    {#if $importing}
+      <Loader2 class="w-4 h-4 animate-spin" />
+    {:else if $importSuccess}
+      <CheckCircle2 class="w-4 h-4 text-white" /> Imported
+    {:else}
+      <Upload class="w-4 h-4" /> Import
+    {/if}
+    <input type="file" accept="application/json" class="hidden" on:change={importJSON} />
+  </label>
+</div>
 
     <!-- 👉 Boutons à droite -->
     <div class="flex flex-wrap gap-2 justify-end">
@@ -405,25 +550,57 @@
       <h2 class="text-xl font-bold">{$totalItems}</h2>
     </div>
     <div class="bg-gray-100 dark:bg-gray-800 p-4 rounded shadow">
-      <p class="text-sm text-gray-600 dark:text-gray-400">Orphaned Files</p>
+      <p class="text-sm text-gray-600 dark:text-gray-400">Symlinks brisés</p>
       <h2 class="text-xl font-bold">{$orphaned}</h2>
     </div>
     <div class="bg-gray-100 dark:bg-gray-800 p-4 rounded shadow">
-      <p class="text-sm text-gray-600 dark:text-gray-400">Unique Targets</p>
+      <p class="text-sm text-gray-600 dark:text-gray-400">Cible unique</p>
       <h2 class="text-xl font-bold">{$uniqueTargets}</h2>
     </div>
   </div>
 
-  <!-- Sélecteur de pagination -->
-  <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mt-6">
-    <div class="relative w-full sm:w-1/2">
-      <input
-        bind:value={$search}
-        placeholder="Search symlinks..."
-        class="w-full border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-200 rounded-lg pl-10 pr-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 placeholder-gray-400 dark:placeholder-gray-500"
-      />
-      <Search class="absolute top-2.5 left-3 text-gray-400 w-5 h-5" />
+<div class="flex flex-col sm:flex-row justify-between items-center gap-4 mt-6">
+  <!-- 🔍 Champ de recherche -->
+  <div class="relative w-full sm:w-1/3">
+    <input
+      bind:value={$search}
+      placeholder="Search symlinks..."
+      class="w-full border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-200 rounded-lg pl-10 pr-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 placeholder-gray-400 dark:placeholder-gray-500"
+    />
+    <Search class="absolute top-2.5 left-3 text-gray-400 w-5 h-5" />
+  </div>
+
+  <!-- 📂 Filtre dossier -->
+  <div class="relative w-full sm:w-1/4">
+    <select
+      bind:value={$selectedDir}
+      on:change={() => {
+        currentPage.set(1);
+        refreshList();
+      }}
+      class="appearance-none w-full pl-10 pr-10 py-2 rounded-lg bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 text-gray-900 dark:text-gray-200 shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all duration-200 ease-in-out hover:scale-[1.01]"
+    >
+      <option value="">📁 Tous</option>
+      {#each $availableDirs as dir}
+        <option value={dir}>📂 {dir}</option>
+      {/each}
+    </select>
+
+    <!-- Icône fixe à gauche -->
+    <div class="absolute inset-y-0 left-3 flex items-center pointer-events-none">
+      <FolderSearch class="w-4 h-4 text-yellow-500 dark:text-yellow-400" />
     </div>
+
+    <!-- Flèche dropdown à droite -->
+    <div class="absolute inset-y-0 right-3 flex items-center text-gray-400 dark:text-gray-500 pointer-events-none">
+      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+      </svg>
+    </div>
+  </div>
+
+  <!-- 🔢 Pagination -->
+  <div class="w-full sm:w-1/5">
     <select
       on:change={(e) => {
         const newValue = +e.target.value;
@@ -431,7 +608,7 @@
         currentPage.set(1);
         refreshList();
       }}
-      class="border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-200 rounded-lg px-3 py-2"
+      class="w-full border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-200 rounded-lg px-3 py-2"
     >
       <option value="10">10</option>
       <option value="25">25</option>
@@ -439,60 +616,60 @@
       <option value="100">100</option>
     </select>
   </div>
+</div>
 
-  <!-- Tableau -->
-  <div class="overflow-x-auto rounded-lg shadow border border-gray-300 dark:border-gray-700 mt-6">
-    <table class="w-full table-auto text-sm break-words">
-      <thead class="bg-gray-100 dark:bg-gray-700">
-        <tr>
-          <th class="p-4"></th>
-          <th class="text-left p-4 cursor-pointer" on:click={() => sortBy('symlink')}>Symlink</th>
-          <th class="text-left p-4 cursor-pointer" on:click={() => sortBy('target')}>Target</th>
-          <th class="text-left p-4 cursor-pointer" on:click={() => sortBy('ref_count')}>Ref Count</th>
-          <th class="text-left p-4">Actions</th>
-        </tr>
-      </thead>
-      <tbody>
-        {#each $symlinks as item, index}
-          <tr class="{index % 2 === 0 ? 'bg-white dark:bg-gray-800' : 'bg-gray-50 dark:bg-gray-900'} hover:bg-gray-100 dark:hover:bg-gray-700">
-            <td class="p-4">
-              <input type="checkbox" checked={$selected.includes(item)} on:change={() => toggleSelected(item)} />
-            </td>
-            <td class="p-4 font-mono break-all">{item.symlink}</td>
-            <td class="p-4 font-mono text-gray-600 dark:text-gray-400 break-all">{item.target}</td>
-            <td class="p-4">
-              <span class="inline-block px-2 py-1 text-sm rounded-full font-medium {item.ref_count === 0 ? 'bg-red-100 text-red-600 dark:bg-red-800 dark:text-red-300' : 'bg-green-100 text-green-600 dark:bg-green-800 dark:text-green-300'}">
-                {item.ref_count}
-              </span>
-            </td>
-            <td class="p-4">
-              <div class="flex justify-end gap-2">
-                <button on:click={() => viewSymlink(item)} class="btn btn-emerald-deep">
-                  <Eye class="w-4 h-4" /> View
-                </button>
-                <button
-                  on:click={() => deleteSymlink(item)}
-                  class="btn btn-red-deep"
-                  disabled={$deleting[item.symlink]}
-                >
-                  {#if $deleting[item.symlink]}
-                    <Loader2 class="w-4 h-4 animate-spin text-white" />
-                    <span class="text-white">Suppression...</span>
-                  {:else if $deleteSuccess[item.symlink]}
-                    <CheckCircle2 class="w-4 h-4 text-white" />
-                    <span class="text-white">Supprimé</span>
-                  {:else}
-                    <Trash class="w-4 h-4" />
-                    <span>Delete</span>
-                  {/if}
-                </button>
-              </div>
-            </td>
-          </tr>
-        {/each}
-      </tbody>
-    </table>
-  </div>
+<div class="space-y-4 mt-6">
+  {#each $symlinks as item, index}
+    <div
+      class="p-4 rounded-xl shadow bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-200 transition hover:scale-[1.01]"
+    >
+      <div class="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-4">
+        
+        <!-- Infos principales -->
+        <div class="flex-1 space-y-1">
+          <p class="text-sm font-semibold font-mono break-all">
+            {item.symlink}
+          </p>
+          <p class="text-sm font-mono text-gray-500 dark:text-gray-400 break-all">
+            → {item.target}
+          </p>
+          <p class="text-xs text-gray-500 dark:text-gray-400">
+            Ref Count:
+            <span class="ml-1 inline-block px-2 py-0.5 rounded-full font-semibold
+              {item.ref_count === 0
+                ? 'bg-red-100 text-red-600 dark:bg-red-800 dark:text-red-300'
+                : 'bg-green-100 text-green-600 dark:bg-green-800 dark:text-green-300'}"
+            >
+              {item.ref_count}
+            </span>
+          </p>
+        </div>
+
+        <!-- Actions -->
+        <div class="flex gap-2 items-center justify-end shrink-0">
+          <button on:click={() => viewSymlink(item)} class="btn btn-emerald-deep">
+            <Eye class="w-4 h-4" /> View
+          </button>
+          <button
+            on:click={() => deleteSymlink(item)}
+            class="btn btn-red-deep"
+            disabled={$deleting[item.symlink]}
+          >
+            {#if $deleting[item.symlink]}
+              <Loader2 class="w-4 h-4 animate-spin text-white" />
+            {:else if $deleteSuccess[item.symlink]}
+              <CheckCircle2 class="w-4 h-4 text-white" />
+            {:else}
+              <Trash class="w-4 h-4" />
+            {/if}
+            <span>Delete</span>
+          </button>
+        </div>
+
+      </div>
+    </div>
+  {/each}
+</div>
 
   <!-- Pagination -->
   <div class="flex flex-col sm:flex-row justify-between items-center mt-6 gap-4">
@@ -530,4 +707,5 @@
   .btn-cyan-deep {
     @apply bg-cyan-600 hover:bg-cyan-700 text-white focus-visible:ring-cyan-400;
   }
+
 </style>
