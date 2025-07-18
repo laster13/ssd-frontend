@@ -2,7 +2,6 @@
     import { onMount } from 'svelte';
     import { writable, derived, get } from 'svelte/store';
     import { FolderSearch } from 'lucide-svelte';
-
     import {
         Search, Eye, Trash, RefreshCw, Info, Scan,
         Download, Upload, Filter, Loader2, CheckCircle2
@@ -53,14 +52,25 @@
     const bulkDeleteSuccess = writable(false);
     const allSymlinks = writable([]);
 
-
-
+    const repairing = writable(false);
+    const repairSuccess = writable(false);
 
     let sortedColumn = null;
     let ascending = true;
     let mounted = false;
-export const allBrokenCount = writable(0)
+    export const allBrokenCount = writable(0)
 
+    const filteredSymlinks = derived(
+        [symlinks, search],
+        ([$symlinks, $search]) =>
+            $symlinks.filter(item =>
+                item.symlink.toLowerCase().includes($search.toLowerCase()) ||
+                item.target.toLowerCase().includes($search.toLowerCase())
+            )
+    );
+
+    let searchTerm = '';
+    $: searchTerm = $search.trim();
 
     $: if (mounted && $search !== undefined) {
         currentPage.set(1);
@@ -71,9 +81,8 @@ export const allBrokenCount = writable(0)
         refreshList();
     }
 
-// 🧮 Nombre de symlinks cassés
-$: brokenCount = $symlinks.filter(i => i.ref_count === 0 || i.target_exists === false).length;
-
+    // 🧮 Nombre de symlinks cassés
+    $: brokenCount = $symlinks.filter(i => i.ref_count === 0 || i.target_exists === false).length;
 
     function sortBy(column) {
         if (sortedColumn === column) {
@@ -89,98 +98,103 @@ $: brokenCount = $symlinks.filter(i => i.ref_count === 0 || i.target_exists === 
         Math.ceil($total / $perPage)
     );
 
-
-// Pluriel simple
-function s(count) {
-  return count > 1 ? 's' : '';
-}
-
-async function deleteAllBrokenSymlinks() {
-  const folder = get(selectedDir);
-  const isAll = folder === '';
-  const isShows = folder && folder.toLowerCase().includes('show');
-  const isMovies = folder && folder.toLowerCase().includes('movie');
-
-  let urlRadarr = `${baseURL}/api/v1/symlinks/delete_broken`;
-  let urlSonarr = `${baseURL}/api/v1/symlinks/delete_broken_sonarr`;
-
-  if (folder) {
-    const encoded = encodeURIComponent(folder);
-    urlRadarr += `?folder=${encoded}`;
-    urlSonarr += `?folder=${encoded}`;
-  }
-
-  let urlsToCall = [];
-
-  if (isAll) {
-    const confirmAll = confirm("🗑️ Supprimer TOUS les symlinks cassés (Radarr + Sonarr) ?");
-    if (!confirmAll) return;
-    urlsToCall = [
-      { name: 'Radarr', url: urlRadarr },
-      { name: 'Sonarr', url: urlSonarr }
-    ];
-  } else if (isMovies) {
-    urlsToCall = [{ name: 'Radarr', url: urlRadarr }];
-  } else if (isShows) {
-    urlsToCall = [{ name: 'Sonarr', url: urlSonarr }];
-  } else {
-    // Sécurité : si on ne sait pas quoi faire
-    alert("❓ Type de dossier inconnu : suppression annulée.");
-    return;
-  }
-
-  bulkDeleting.set(true);
-  bulkDeleteSuccess.set(false);
-
-  try {
-    const results = await Promise.all(
-      urlsToCall.map(entry => fetch(entry.url, { method: 'POST' }))
-    );
-
-    const jsons = await Promise.all(
-      results.map(r => r.ok ? r.json() : { deleted: 0 })
-    );
-
-    const messages = jsons.map((j, i) => `✅ ${j.deleted || 0} supprimé(s) via ${urlsToCall[i].name}`);
-    logs.update(l => [...messages, ...l]);
-
-    bulkDeleteSuccess.set(true);
-    refreshList();
-    setTimeout(() => bulkDeleteSuccess.set(false), 3000);
-  } catch (e) {
-    alert("❌ Échec suppression");
-    console.error(e);
-  } finally {
-    bulkDeleting.set(false);
-  }
-}
-
-async function loadConfig() {
-  try {
-    const res = await fetch(`${baseURL}/api/v1/symlinks/config`);
-    if (res.ok) {
-      const config = await res.json();
-      const firstDir = Array.isArray(config.links_dirs) ? config.links_dirs[0] : '';
-      if (firstDir) {
-        linksDir.set(firstDir.endsWith('/') ? firstDir : firstDir + '/');
-      } else {
-        console.warn('⚠️ Aucun répertoire trouvé dans config.links_dirs');
-      }
+    // Pluriel simple
+    function s(count) {
+        return count > 1 ? 's' : '';
     }
 
-    // 🔽 Charger les sous-dossiers pour le filtre
-    const foldersRes = await fetch(`${baseURL}/api/v1/symlinks/folders`);
-    if (foldersRes.ok) {
-      const folders = await foldersRes.json();
-      availableDirs.set(folders);
-    } else {
-      console.warn('⚠️ Impossible de charger les sous-dossiers de Medias');
+    async function deleteAllBrokenSymlinks() {
+        const folder = get(selectedDir);
+        const isAll = folder === '';
+        const isShows = folder && folder.toLowerCase().includes('show');
+        const isMovies = folder && folder.toLowerCase().includes('movie');
+
+        let urlRadarr = `${baseURL}/api/v1/symlinks/delete_broken`;
+        let urlSonarr = `${baseURL}/api/v1/symlinks/delete_broken_sonarr`;
+
+        if (folder) {
+            const encoded = encodeURIComponent(folder);
+            urlRadarr += `?folder=${encoded}`;
+            urlSonarr += `?folder=${encoded}`;
+        }
+
+        let urlsToCall = [];
+
+        if (isAll) {
+            const confirmAll = confirm("🗑️ Supprimer TOUS les symlinks cassés (Radarr + Sonarr) ?");
+            if (!confirmAll) return;
+            urlsToCall = [
+                { name: 'Radarr', url: urlRadarr },
+                { name: 'Sonarr', url: urlSonarr }
+            ];
+        } else if (isMovies) {
+            urlsToCall = [{ name: 'Radarr', url: urlRadarr }];
+        } else if (isShows) {
+            urlsToCall = [{ name: 'Sonarr', url: urlSonarr }];
+        } else {
+            alert("❓ Type de dossier inconnu : suppression annulée.");
+            return;
+        }
+
+        bulkDeleting.set(true);
+        bulkDeleteSuccess.set(false);
+
+        // ⏱️ Timeout de secours
+        const timeout = setTimeout(() => {
+            bulkDeleting.set(false);
+            console.warn("⏱️ Spinner bulkDeleting arrêté après 5s");
+        }, 5000);
+
+        try {
+            const results = await Promise.all(
+                urlsToCall.map(entry => fetch(entry.url, { method: 'POST' }))
+            );
+
+            const jsons = await Promise.all(
+                results.map(r => r.ok ? r.json() : { deleted: 0 })
+            );
+
+            const messages = jsons.map((j, i) => `✅ ${j.deleted || 0} supprimé(s) via ${urlsToCall[i].name}`);
+            logs.update(l => [...messages, ...l]);
+
+            bulkDeleteSuccess.set(true);
+            refreshList();
+            setTimeout(() => bulkDeleteSuccess.set(false), 3000);
+        } catch (e) {
+            alert("❌ Échec suppression");
+            console.error(e);
+        } finally {
+            bulkDeleting.set(false);
+            clearTimeout(timeout); // ✅ On nettoie le timeout si tout est OK
+        }
     }
 
-  } catch (e) {
-    console.error('Erreur de chargement de config ou dossiers :', e);
-  }
-}
+    async function loadConfig() {
+        try {
+            const res = await fetch(`${baseURL}/api/v1/symlinks/config`);
+            if (res.ok) {
+                const config = await res.json();
+                const firstDir = Array.isArray(config.links_dirs) ? config.links_dirs[0] : '';
+                if (firstDir) {
+                    linksDir.set(firstDir.endsWith('/') ? firstDir : firstDir + '/');
+                } else {
+                    console.warn('⚠️ Aucun répertoire trouvé dans config.links_dirs');
+                }
+            }
+
+            // 🔽 Charger les sous-dossiers pour le filtre
+            const foldersRes = await fetch(`${baseURL}/api/v1/symlinks/folders`);
+            if (foldersRes.ok) {
+                const folders = await foldersRes.json();
+                availableDirs.set(folders);
+            } else {
+                console.warn('⚠️ Impossible de charger les sous-dossiers de Medias');
+            }
+
+        } catch (e) {
+            console.error('Erreur de chargement de config ou dossiers :', e);
+        }
+    }
 
     function changePage(offset) {
         currentPage.update(n => {
@@ -202,52 +216,52 @@ async function loadConfig() {
         alert(`Symlink: ${item.symlink}\nTarget: ${item.target}\nRef Count: ${item.ref_count}`);
     }
 
-async function deleteSymlink(item) {
-    const fullPath = item.symlink;
-    let baseDir = get(linksDir);
-    if (!baseDir.endsWith('/')) baseDir += '/';
+    async function deleteSymlink(item) {
+        const fullPath = item.symlink;
+        let baseDir = get(linksDir);
+        if (!baseDir.endsWith('/')) baseDir += '/';
 
-    let relativePath = fullPath.startsWith(baseDir)
-        ? fullPath.slice(baseDir.length)
-        : fullPath;
+        let relativePath = fullPath.startsWith(baseDir)
+            ? fullPath.slice(baseDir.length)
+            : fullPath;
 
-    if (relativePath.startsWith('/')) {
-        relativePath = relativePath.slice(1);
-    }
-
-    // 🧠 Choix de la route selon item.type
-    const route =
-        item.type === 'sonarr'
-            ? `/api/v1/symlinks/delete-sonarr/${encodeURIComponent(relativePath)}`
-            : `/api/v1/symlinks/delete/${encodeURIComponent(relativePath)}`;
-
-    deleting.update(state => ({ ...state, [item.symlink]: true }));
-    deleteSuccess.update(state => ({ ...state, [item.symlink]: false }));
-
-    try {
-        const res = await fetch(`${baseURL}${route}`, {
-            method: 'DELETE'
-        });
-
-        if (!res.ok) {
-            const error = await res.json();
-            alert(`Erreur suppression : ${error.detail || res.status}`);
-            return;
+        if (relativePath.startsWith('/')) {
+            relativePath = relativePath.slice(1);
         }
 
-        logs.update(list => [`🗑️ Supprimé : ${item.symlink}`, ...list]);
-        deleteSuccess.update(state => ({ ...state, [item.symlink]: true }));
-        setTimeout(() => {
-            deleteSuccess.update(state => ({ ...state, [item.symlink]: false }));
-        }, 2000);
+        // 🧠 Choix de la route selon item.type
+        const route =
+            item.type === 'sonarr'
+                ? `/api/v1/symlinks/delete-sonarr/${encodeURIComponent(relativePath)}`
+                : `/api/v1/symlinks/delete/${encodeURIComponent(relativePath)}`;
 
-        await triggerScan();
-    } catch (e) {
-        alert('Erreur réseau lors de la suppression');
-    } finally {
-        deleting.update(state => ({ ...state, [item.symlink]: false }));
+        deleting.update(state => ({ ...state, [item.symlink]: true }));
+        deleteSuccess.update(state => ({ ...state, [item.symlink]: false }));
+
+        try {
+            const res = await fetch(`${baseURL}${route}`, {
+                method: 'DELETE'
+            });
+
+            if (!res.ok) {
+                const error = await res.json();
+                alert(`Erreur suppression : ${error.detail || res.status}`);
+                return;
+            }
+
+            logs.update(list => [`🗑️ Supprimé : ${item.symlink}`, ...list]);
+            deleteSuccess.update(state => ({ ...state, [item.symlink]: true }));
+            setTimeout(() => {
+                deleteSuccess.update(state => ({ ...state, [item.symlink]: false }));
+            }, 2000);
+
+            await triggerScan();
+        } catch (e) {
+            alert('Erreur réseau lors de la suppression');
+        } finally {
+            deleting.update(state => ({ ...state, [item.symlink]: false }));
+        }
     }
-}
 
     function exportJSON() {
         exporting.set(true);
@@ -368,6 +382,92 @@ async function deleteSymlink(item) {
         }
     }
 
+    async function deleteFilteredSymlinks() {
+        let baseDir = get(linksDir); // exemple : /home/maman/Medias ou /mnt/media
+        if (!baseDir.endsWith('/')) baseDir += '/';
+
+        const folder = get(selectedDir);
+        const searchTerm = get(search).trim();
+
+        const params = new URLSearchParams();
+        if (folder) params.append("folder", folder);
+        if (searchTerm) params.append("search", searchTerm);
+        params.append("all", "true");
+
+        const res = await fetch(`${baseURL}/api/v1/symlinks?${params.toString()}`);
+        if (!res.ok) {
+            alert(`Erreur récupération symlinks : ${res.status}`);
+            return;
+        }
+
+        const json = await res.json();
+        const symlinksToDelete = json.data;
+
+        console.log("🧹 Suppression des symlinks filtrés :", symlinksToDelete);
+
+        bulkDeleting.set(true);
+        bulkDeleteSuccess.set(false);
+
+        // ⏱️ Timeout de sécurité au cas où le spinner resterait bloqué
+        const timeout = setTimeout(() => {
+            bulkDeleting.set(false);
+            console.warn("⏱️ Spinner bulkDeleting arrêté après 5s");
+        }, 5000);
+
+        for (const item of symlinksToDelete) {
+            const fullPath = item.symlink;
+
+            let relativePath = fullPath;
+            if (fullPath.startsWith(baseDir)) {
+                relativePath = fullPath.slice(baseDir.length);
+            }
+            if (relativePath.startsWith('/')) {
+                relativePath = relativePath.slice(1);
+            }
+
+            console.log("🧩 fullPath:", fullPath);
+            console.log("📁 baseDir:", baseDir);
+            console.log("🧾 relativePath:", relativePath);
+
+            const route =
+                item.type === 'sonarr'
+                    ? `/api/v1/symlinks/delete-sonarr/${encodeURIComponent(relativePath)}`
+                    : `/api/v1/symlinks/delete/${encodeURIComponent(relativePath)}`;
+
+            deleting.update(state => ({ ...state, [item.symlink]: true }));
+            deleteSuccess.update(state => ({ ...state, [item.symlink]: false }));
+
+            try {
+                const delRes = await fetch(`${baseURL}${route}`, {
+                    method: 'DELETE'
+                });
+
+                if (!delRes.ok) {
+                    const error = await delRes.json();
+                    logs.update(l => [`❌ Erreur suppression ${item.symlink} : ${error.detail || delRes.status}`, ...l]);
+                    continue;
+                }
+
+                logs.update(l => [`🗑️ Supprimé : ${item.symlink}`, ...l]);
+                deleteSuccess.update(state => ({ ...state, [item.symlink]: true }));
+
+                setTimeout(() => {
+                    deleteSuccess.update(state => ({ ...state, [item.symlink]: false }));
+                }, 2000);
+            } catch (e) {
+                logs.update(l => [`❌ Erreur réseau pour : ${item.symlink}`, ...l]);
+            } finally {
+                deleting.update(state => ({ ...state, [item.symlink]: false }));
+            }
+        }
+
+        bulkDeleteSuccess.set(true);
+        refreshList();
+        setTimeout(() => bulkDeleteSuccess.set(false), 3000);
+        bulkDeleting.set(false);
+        clearTimeout(timeout); // ✅ Annule le timeout si tout s'est bien terminé
+    }
+
     onMount(() => {
         mounted = true;
         loadConfig();
@@ -411,10 +511,48 @@ async function deleteSymlink(item) {
         };
     });
 
+    async function repairMissingSeasons() {
+        const folder = get(selectedDir);
+        const url = new URL(`${baseURL}/api/v1/symlinks/repair-missing-seasons`);
+
+        if (folder) {
+            url.searchParams.append("folder", folder);
+        }
+
+        refreshing.set(true);
+
+        // 🕐 Stop spinner automatiquement après 5s (fail-safe)
+        const timeout = setTimeout(() => {
+            refreshing.set(false);
+            console.warn("⏱️ Spinner arrêté après 5 secondes (timeout)");
+        }, 5000);
+
+        try {
+            const res = await fetch(url.toString(), {
+                method: "POST"
+            });
+
+            if (!res.ok) {
+                const error = await res.json();
+                alert(`❌ Erreur: ${error.detail || res.status}`);
+                return;
+            }
+
+            const result = await res.json();
+            logs.update(l => [`🛠️ Réparé : ${result.symlinks_deleted} symlinks supprimés`, ...l]);
+            refreshList();
+        } catch (e) {
+            console.error("❌ Erreur réseau :", e);
+            alert("Erreur réseau lors de la réparation");
+        } finally {
+            refreshing.set(false);     // arrêt normal
+            clearTimeout(timeout);     // annule l'arrêt automatique si déjà arrêté
+        }
+    }
 
 </script>
-<main class="w-full min-h-screen p-4 sm:p-6 md:p-8 space-y-6 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-200">
 
+<main class="w-full min-h-screen p-4 sm:p-6 md:p-8 space-y-6 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-200">
   <!-- ✅ Barre d'actions responsive unifiée -->
   <div class="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-4">
 
@@ -422,27 +560,31 @@ async function deleteSymlink(item) {
     <div class="md:hidden relative">
       <details class="relative">
         <summary class="flex items-center gap-2 px-4 py-2 bg-gray-700 text-white rounded-md shadow cursor-pointer text-sm font-medium transition hover:scale-[1.02]">
-          ☰ Options
+          ☞ Options
         </summary>
         <div class="absolute z-10 mt-1 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg shadow-md p-2 space-y-2 w-52">
           <button on:click={() => showOrphansOnly.update(v => !v)} class="btn btn-emerald-deep w-full justify-start">
             <Filter class="w-4 h-4" /> Symlinks Brisés
+          <button on:click={repairMissingSeasons} class="btn btn-indigo-deep" disabled={$repairing}>
+              {#if $repairing}
+                  <Loader2 class="w-4 h-4 animate-spin text-white" /> Réparation...
+              {:else if $repairSuccess}
+                  <CheckCircle2 class="w-4 h-4 text-white" /> Réparé !
+              {:else}
+                  🛠️ Réparer Saisons Incomplètes
+              {/if}
           </button>
-{#if $allBrokenCount > 0}
-  <button on:click={deleteAllBrokenSymlinks} class="btn btn-red-deep w-full justify-start" disabled={$bulkDeleting}>
-    {#if $bulkDeleting}
-      <Loader2 class="w-4 h-4 animate-spin text-white" />
-      Suppression...
-    {:else if $bulkDeleteSuccess}
-      <CheckCircle2 class="w-4 h-4 text-white" />
-      Supprimés !
-    {:else}
-      <Trash class="w-4 h-4" />
-      Supprimer {$allBrokenCount} symlink{s($allBrokenCount)} cassé{s($allBrokenCount)}
-    {/if}
-  </button>
-{/if}
-
+          {#if $allBrokenCount > 0}
+            <button on:click={deleteAllBrokenSymlinks} class="btn btn-red-deep w-full justify-start" disabled={$bulkDeleting}>
+              {#if $bulkDeleting}
+                <Loader2 class="w-4 h-4 animate-spin text-white" /> Suppression...
+              {:else if $bulkDeleteSuccess}
+                <CheckCircle2 class="w-4 h-4 text-white" /> Supprimés !
+              {:else}
+                <Trash class="w-4 h-4" /> Supprimer {$allBrokenCount} symlink{s($allBrokenCount)} cassé{s($allBrokenCount)}
+              {/if}
+            </button>
+          {/if}
           <button on:click={exportJSON} class="btn btn-indigo-deep w-full justify-start">
             {#if $exporting}
               <Loader2 class="w-4 h-4 animate-spin" />
@@ -467,50 +609,52 @@ async function deleteSymlink(item) {
     </div>
 
     <!-- 👈 Boutons desktop -->
-<!-- 👈 Boutons desktop -->
-<div class="hidden md:flex flex-wrap gap-2">
-  <button on:click={() => showOrphansOnly.update(v => !v)} class="btn btn-emerald-deep">
-    <Filter class="w-4 h-4" /> Symlinks brisés
-  </button>
-
-  {#if $allBrokenCount > 0}
-    <button on:click={deleteAllBrokenSymlinks} class="btn btn-red-deep" disabled={$bulkDeleting}>
-      {#if $bulkDeleting}
-        <Loader2 class="w-4 h-4 animate-spin text-white" />
-        Suppression...
-      {:else if $bulkDeleteSuccess}
-        <CheckCircle2 class="w-4 h-4 text-white" />
-        Supprimés !
-      {:else}
-        <Trash class="w-4 h-4" />
-        Supprimer {$allBrokenCount} symlink{s($allBrokenCount)} cassé{s($allBrokenCount)}
+    <div class="hidden md:flex flex-wrap gap-2">
+      <button on:click={() => showOrphansOnly.update(v => !v)} class="btn btn-emerald-deep">
+        <Filter class="w-4 h-4" /> Symlinks brisés
+      </button>
+      <button on:click={repairMissingSeasons} class="btn btn-indigo-deep" disabled={$repairing}>
+          {#if $repairing}
+              <Loader2 class="w-4 h-4 animate-spin text-white" /> Réparation...
+          {:else if $repairSuccess}
+              <CheckCircle2 class="w-4 h-4 text-white" /> Réparé !
+          {:else}
+              🛠️ Réparer Saisons Incomplètes
+          {/if}
+      </button>
+      {#if $allBrokenCount > 0}
+        <button on:click={deleteAllBrokenSymlinks} class="btn btn-red-deep" disabled={$bulkDeleting}>
+          {#if $bulkDeleting}
+            <Loader2 class="w-4 h-4 animate-spin text-white" /> Suppression...
+          {:else if $bulkDeleteSuccess}
+            <CheckCircle2 class="w-4 h-4 text-white" /> Supprimés !
+          {:else}
+            <Trash class="w-4 h-4" /> Supprimer {$allBrokenCount} symlink{s($allBrokenCount)} cassé{s($allBrokenCount)}
+          {/if}
+        </button>
       {/if}
-    </button>
-  {/if}
+      <button on:click={exportJSON} class="btn btn-indigo-deep">
+        {#if $exporting}
+          <Loader2 class="w-4 h-4 animate-spin" />
+        {:else if $exportSuccess}
+          <CheckCircle2 class="w-4 h-4 text-white" /> Exported
+        {:else}
+          <Download class="w-4 h-4" /> Export
+        {/if}
+      </button>
+      <label class="btn btn-cyan-deep cursor-pointer">
+        {#if $importing}
+          <Loader2 class="w-4 h-4 animate-spin" />
+        {:else if $importSuccess}
+          <CheckCircle2 class="w-4 h-4 text-white" /> Imported
+        {:else}
+          <Upload class="w-4 h-4" /> Import
+        {/if}
+        <input type="file" accept="application/json" class="hidden" on:change={importJSON} />
+      </label>
+    </div>
 
-  <button on:click={exportJSON} class="btn btn-indigo-deep">
-    {#if $exporting}
-      <Loader2 class="w-4 h-4 animate-spin" />
-    {:else if $exportSuccess}
-      <CheckCircle2 class="w-4 h-4 text-white" /> Exported
-    {:else}
-      <Download class="w-4 h-4" /> Export
-    {/if}
-  </button>
-
-  <label class="btn btn-cyan-deep cursor-pointer">
-    {#if $importing}
-      <Loader2 class="w-4 h-4 animate-spin" />
-    {:else if $importSuccess}
-      <CheckCircle2 class="w-4 h-4 text-white" /> Imported
-    {:else}
-      <Upload class="w-4 h-4" /> Import
-    {/if}
-    <input type="file" accept="application/json" class="hidden" on:change={importJSON} />
-  </label>
-</div>
-
-    <!-- 👉 Boutons à droite -->
+    <!-- 🔺 Boutons à droite -->
     <div class="flex flex-wrap gap-2 justify-end">
       <button on:click={refreshList} class="btn btn-blue">
         {#if $refreshing}
@@ -559,15 +703,33 @@ async function deleteSymlink(item) {
     </div>
   </div>
 
+<!-- 🔍 Champ de recherche + bouton suppression -->
 <div class="flex flex-col sm:flex-row justify-between items-center gap-4 mt-6">
-  <!-- 🔍 Champ de recherche -->
-  <div class="relative w-full sm:w-1/3">
-    <input
-      bind:value={$search}
-      placeholder="Search symlinks..."
-      class="w-full border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-200 rounded-lg pl-10 pr-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 placeholder-gray-400 dark:placeholder-gray-500"
-    />
-    <Search class="absolute top-2.5 left-3 text-gray-400 w-5 h-5" />
+  <div class="flex items-center w-full sm:w-2/3 gap-2 relative">
+    <div class="relative flex-grow">
+      <input
+        bind:value={$search}
+        placeholder="Search symlinks..."
+        class="w-full border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-200 rounded-lg pl-10 pr-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 placeholder-gray-400 dark:placeholder-gray-500"
+      />
+      <Search class="absolute top-2.5 left-3 text-gray-400 w-5 h-5" />
+    </div>
+
+    {#if searchTerm.length > 0 && $totalItems > 0}
+      <button
+        on:click={deleteFilteredSymlinks}
+        class="btn btn-red-deep whitespace-nowrap"
+        disabled={$bulkDeleting}
+      >
+        {#if $bulkDeleting}
+          <Loader2 class="w-4 h-4 animate-spin text-white" /> Suppression...
+        {:else if $bulkDeleteSuccess}
+          <CheckCircle2 class="w-4 h-4 text-white" /> Supprimés !
+        {:else}
+          <Trash class="w-4 h-4" /> Supprimer {$totalItems} symlink{s($totalItems)} filtré{s($totalItems)}
+        {/if}
+      </button>
+    {/if}
   </div>
 
   <!-- 📂 Filtre dossier -->
@@ -586,12 +748,10 @@ async function deleteSymlink(item) {
       {/each}
     </select>
 
-    <!-- Icône fixe à gauche -->
     <div class="absolute inset-y-0 left-3 flex items-center pointer-events-none">
       <FolderSearch class="w-4 h-4 text-yellow-500 dark:text-yellow-400" />
     </div>
 
-    <!-- Flèche dropdown à droite -->
     <div class="absolute inset-y-0 right-3 flex items-center text-gray-400 dark:text-gray-500 pointer-events-none">
       <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
@@ -620,41 +780,27 @@ async function deleteSymlink(item) {
 
 <div class="space-y-4 mt-6">
   {#each $symlinks as item, index}
-    <div
-      class="p-4 rounded-xl shadow bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-200 transition hover:scale-[1.01]"
-    >
+    <div class="p-4 rounded-xl shadow bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-200 transition hover:scale-[1.01]">
       <div class="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-4">
-        
-        <!-- Infos principales -->
         <div class="flex-1 space-y-1">
-          <p class="text-sm font-semibold font-mono break-all">
-            {item.symlink}
-          </p>
-          <p class="text-sm font-mono text-gray-500 dark:text-gray-400 break-all">
-            → {item.target}
-          </p>
+          <p class="text-sm font-semibold font-mono break-all">{item.symlink}</p>
+          <p class="text-sm font-mono text-gray-500 dark:text-gray-400 break-all">&rarr; {item.target}</p>
           <p class="text-xs text-gray-500 dark:text-gray-400">
             Ref Count:
             <span class="ml-1 inline-block px-2 py-0.5 rounded-full font-semibold
               {item.ref_count === 0
                 ? 'bg-red-100 text-red-600 dark:bg-red-800 dark:text-red-300'
-                : 'bg-green-100 text-green-600 dark:bg-green-800 dark:text-green-300'}"
-            >
+                : 'bg-green-100 text-green-600 dark:bg-green-800 dark:text-green-300'}">
               {item.ref_count}
             </span>
           </p>
         </div>
 
-        <!-- Actions -->
         <div class="flex gap-2 items-center justify-end shrink-0">
           <button on:click={() => viewSymlink(item)} class="btn btn-emerald-deep">
             <Eye class="w-4 h-4" /> View
           </button>
-          <button
-            on:click={() => deleteSymlink(item)}
-            class="btn btn-red-deep"
-            disabled={$deleting[item.symlink]}
-          >
+          <button on:click={() => deleteSymlink(item)} class="btn btn-red-deep" disabled={$deleting[item.symlink]}>
             {#if $deleting[item.symlink]}
               <Loader2 class="w-4 h-4 animate-spin text-white" />
             {:else if $deleteSuccess[item.symlink]}
@@ -665,25 +811,22 @@ async function deleteSymlink(item) {
             <span>Delete</span>
           </button>
         </div>
-
       </div>
     </div>
   {/each}
 </div>
 
-  <!-- Pagination -->
-  <div class="flex flex-col sm:flex-row justify-between items-center mt-6 gap-4">
-    <button on:click={() => changePage(-1)} disabled={$currentPage === 1} class="btn btn-gray disabled:opacity-50">
-      ⬅ Prev
-    </button>
-    <span class="text-sm">Page {$currentPage} of {$totalPages}</span>
-    <button on:click={() => changePage(1)} disabled={$currentPage === $totalPages} class="btn btn-gray disabled:opacity-50">
-      Next ➡
-    </button>
-  </div>
+<!-- Pagination -->
+<div class="flex flex-col sm:flex-row justify-between items-center mt-6 gap-4">
+  <button on:click={() => changePage(-1)} disabled={$currentPage === 1} class="btn btn-gray disabled:opacity-50">
+    ⬅ Prev
+  </button>
+  <span class="text-sm">Page {$currentPage} of {$totalPages}</span>
+  <button on:click={() => changePage(1)} disabled={$currentPage === $totalPages} class="btn btn-gray disabled:opacity-50">
+    Next ➔
+  </button>
+</div>
 </main>
-
-
 
 <style>
   .btn {
