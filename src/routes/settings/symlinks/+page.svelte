@@ -1,4 +1,4 @@
-<script>
+<script lang="ts">
     import { onMount } from 'svelte';
     import { writable, derived, get } from 'svelte/store';
     import { FolderSearch } from 'lucide-svelte';
@@ -7,9 +7,10 @@
         Download, Upload, Filter, Loader2, CheckCircle2
     } from 'lucide-svelte';
     import { goto } from '$app/navigation';
+    import { ChevronDown } from 'lucide-svelte';
 
-	// 🔍 LOG ici pour déboguer les variables d'environnement injectées par Vite
-	console.log("🧪 import.meta.env :", import.meta.env);
+    // 🔍 LOG ici pour déboguer les variables d'environnement injectées par Vite
+    console.log("🧪 import.meta.env :", import.meta.env);
 
     const baseURL = import.meta.env.DEV
       ? import.meta.env.VITE_BACKEND_URL_HTTP
@@ -55,10 +56,15 @@
     const repairing = writable(false);
     const repairSuccess = writable(false);
 
+    let menu: HTMLDetailsElement;
     let sortedColumn = null;
     let ascending = true;
     let mounted = false;
-    export const allBrokenCount = writable(0)
+    let eventSource;
+    export const allBrokenCount = writable(0);
+    export const showDuplicatesOnly = writable(false);
+    const hasDuplicates = writable(false);
+
 
     const filteredSymlinks = derived(
         [symlinks, search],
@@ -79,6 +85,55 @@
 
     $: if (mounted && $showOrphansOnly !== undefined) {
         refreshList();
+    }
+
+    $: if (mounted && $showDuplicatesOnly !== undefined) {
+        loadSymlinks();
+    }
+
+   function handleAndClose(action: () => void) {
+     action();
+     menu?.removeAttribute('open');
+   }
+
+    async function loadSymlinks() {
+        const isDuplicateMode = get(showDuplicatesOnly);
+
+        const url = isDuplicateMode
+            ? `${baseURL}/api/v1/symlinks/duplicates`
+            : `${baseURL}/api/v1/symlinks?page=1&limit=50`;
+
+        try {
+            const res = await fetch(url);
+            if (!res.ok) throw new Error('Erreur chargement');
+
+            const json = await res.json();
+            symlinks.set(json.data);
+            totalItems.set(json.total || json.data?.length || 0);
+
+            // 🔄 Toujours mettre à jour le flag hasDuplicates
+            try {
+                const dupRes = await fetch(`${baseURL}/api/v1/symlinks/duplicates`);
+                if (dupRes.ok) {
+                    const dupJson = await dupRes.json();
+                    const hasSome = (dupJson.total || 0) > 0;
+                    hasDuplicates.set(hasSome);
+
+                    // 🧹 Si on est en mode doublons mais qu’il n’y en a plus, on désactive le filtre
+                    if (isDuplicateMode && !hasSome) {
+                        showDuplicatesOnly.set(false);
+                    }
+                } else {
+                    hasDuplicates.set(false);
+                }
+            } catch (e) {
+                console.warn("⚠️ Impossible de vérifier les doublons :", e);
+                hasDuplicates.set(false);
+            }
+
+        } catch (e) {
+            console.error("❌ loadSymlinks:", e);
+        }
     }
 
     // 🧮 Nombre de symlinks cassés
@@ -245,8 +300,7 @@
 
             if (!res.ok) {
                 const error = await res.json();
-                alert(`Erreur suppression : ${error.detail || res.status}`);
-                return;
+                console.warn(`Suppression locale uniquement : ${error.detail || res.status}`);
             }
 
             logs.update(list => [`🗑️ Supprimé : ${item.symlink}`, ...list]);
@@ -255,7 +309,7 @@
                 deleteSuccess.update(state => ({ ...state, [item.symlink]: false }));
             }, 2000);
 
-            await triggerScan();
+            await refreshList();
         } catch (e) {
             alert('Erreur réseau lors de la suppression');
         } finally {
@@ -359,7 +413,7 @@
 
             const folder = get(selectedDir);
             if (folder) {
-              params.append('folder', folder);
+                params.append('folder', folder);
             }
 
             const res = await fetch(`${baseURL}/api/v1/symlinks?${params.toString()}`);
@@ -375,6 +429,27 @@
             logs.update(l => [`Liste rafraîchie (page ${json.page})`, ...l]);
             refreshSuccess.set(true);
             setTimeout(() => refreshSuccess.set(false), 2000);
+
+            // 🔄 Mettre à jour le flag des doublons ici aussi
+            try {
+                const dupRes = await fetch(`${baseURL}/api/v1/symlinks/duplicates`);
+                if (dupRes.ok) {
+                    const dupJson = await dupRes.json();
+                    const hasSome = (dupJson.total || 0) > 0;
+                    hasDuplicates.set(hasSome);
+
+                    // 🧼 Si on est en mode doublon mais qu'il n'y en a plus, on désactive
+                    if (get(showDuplicatesOnly) && !hasSome) {
+                        showDuplicatesOnly.set(false);
+                    }
+                } else {
+                    hasDuplicates.set(false);
+                }
+            } catch (e) {
+                console.warn("⚠️ Erreur lors du fetch des doublons :", e);
+                hasDuplicates.set(false);
+            }
+
         } catch (e) {
             logs.update(l => [`Erreur réseau : ${e.message}`, ...l]);
         } finally {
@@ -468,48 +543,34 @@
         clearTimeout(timeout); // ✅ Annule le timeout si tout s'est bien terminé
     }
 
-    onMount(() => {
+    onMount(async () => {
         mounted = true;
-        loadConfig();
-        refreshList();
+        await loadConfig();       // chargement initial
+        await refreshList();      // premier affichage
+        await loadSymlinks();     // initial doublons ou pas
+        connectSSE();             // uniquement ici, pas en double
 
-        // 🔁 Rafraîchit la liste si on toggle les orphelins
         const unsubscribe = showOrphansOnly.subscribe(() => {
             refreshList();
         });
 
-        // 🔌 Connexion au flux SSE
-        const eventSource = new EventSource(`${baseURL}/api/v1/symlinks/events`);
-
-        eventSource.onmessage = (event) => {
-            console.log("🔄 Événement SSE reçu :", event.data);
-
-            try {
-                const parsed = JSON.parse(event.data);
-                console.log("📦 Données SSE parsées :", parsed);
-
-                if (typeof refreshList === 'function') {
-                    console.log("📞 Appel automatique de refreshList()");
-                    refreshList();
-                } else {
-                    console.warn("⚠️ refreshList() n'est pas défini");
-                }
-            } catch (e) {
-                console.error("❌ Erreur de parsing SSE :", e);
+        // 🔁 Fallback si aucun SSE reçu dans les 2s (ex: après pm2 restart)
+        setTimeout(() => {
+            if (get(showDuplicatesOnly)) {
+                loadSymlinks();
+            } else {
+                refreshList();
             }
-        };
+        }, 2000);
 
-        eventSource.onerror = (error) => {
-            console.error("❌ Erreur SSE :", error);
-            eventSource.close();
-        };
-
-        // 🔚 Nettoyage à la destruction du composant
         return () => {
-            eventSource.close();
-            unsubscribe(); // utile si showOrphansOnly est un store externe
+            unsubscribe(); // ⚠ pas de .close() ici, géré dans connectSSE()
         };
     });
+
+    $: if (mounted && $showDuplicatesOnly && !$hasDuplicates) {
+        showDuplicatesOnly.set(false); // désactive proprement le filtre
+    }
 
     async function repairMissingSeasons() {
         const folder = get(selectedDir);
@@ -519,12 +580,12 @@
             url.searchParams.append("folder", folder);
         }
 
-        refreshing.set(true);
+        repairing.set(true);         // 🌀 Active le spinner
+        repairSuccess.set(false);    // ❌ Réinitialise succès
 
-        // 🕐 Stop spinner automatiquement après 5s (fail-safe)
         const timeout = setTimeout(() => {
-            refreshing.set(false);
-            console.warn("⏱️ Spinner arrêté après 5 secondes (timeout)");
+            repairing.set(false);
+            console.warn("⏱️ Spinner 'repairing' arrêté après 5s (timeout)");
         }, 5000);
 
         try {
@@ -540,14 +601,64 @@
 
             const result = await res.json();
             logs.update(l => [`🛠️ Réparé : ${result.symlinks_deleted} symlinks supprimés`, ...l]);
+
+            repairSuccess.set(true); // ✅ Affiche succès
+            setTimeout(() => repairSuccess.set(false), 2000); // 🔁 Réinitialise
+
             refreshList();
         } catch (e) {
             console.error("❌ Erreur réseau :", e);
             alert("Erreur réseau lors de la réparation");
         } finally {
-            refreshing.set(false);     // arrêt normal
-            clearTimeout(timeout);     // annule l'arrêt automatique si déjà arrêté
+            repairing.set(false); // ⛔ Désactive le spinner
+            clearTimeout(timeout);
         }
+    }
+
+    function connectSSE() {
+        const eventSource = new EventSource(`${baseURL}/api/v1/symlinks/events`);
+
+        eventSource.onmessage = async (event) => {
+            try {
+                const parsed = JSON.parse(event.data);
+                console.log("📦 Données SSE parsées :", parsed);
+
+                setTimeout(async () => {
+                    if (get(showDuplicatesOnly)) {
+                        await loadSymlinks();
+                    } else {
+                        await refreshList();
+
+                        // 🔁 MAJ du flag hasDuplicates
+                        try {
+                            const dupRes = await fetch(`${baseURL}/api/v1/symlinks/duplicates`);
+                            if (dupRes.ok) {
+                                const dupJson = await dupRes.json();
+                                hasDuplicates.set((dupJson.total || 0) > 0);
+                            } else {
+                                hasDuplicates.set(false);
+                            }
+                        } catch (err) {
+                            console.error("❌ Erreur MAJ hasDuplicates :", err);
+                            hasDuplicates.set(false);
+                        }
+                    }
+                }, 100);
+            } catch (e) {
+                console.error("❌ Erreur parsing SSE :", e);
+            }
+        };
+
+        eventSource.onerror = (error) => {
+            console.error("❌ Erreur SSE :", error);
+            eventSource.close();
+
+            // 🔁 Reconnexion automatique
+            setTimeout(() => {
+                console.log("🔁 Tentative de reconnexion SSE...");
+                connectSSE();
+            }, 2000);
+        };
     }
 
 </script>
@@ -558,56 +669,130 @@
 
     <!-- ☕ Menu mobile -->
     <div class="md:hidden relative">
-      <details class="relative">
-        <summary class="flex items-center gap-2 px-4 py-2 bg-gray-700 text-white rounded-md shadow cursor-pointer text-sm font-medium transition hover:scale-[1.02]">
-          ☞ Options
-        </summary>
-        <div class="absolute z-10 mt-1 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg shadow-md p-2 space-y-2 w-52">
-          <button on:click={() => showOrphansOnly.update(v => !v)} class="btn btn-emerald-deep w-full justify-start">
-            <Filter class="w-4 h-4" /> Symlinks Brisés
-          <button on:click={repairMissingSeasons} class="btn btn-indigo-deep" disabled={$repairing}>
-              {#if $repairing}
-                  <Loader2 class="w-4 h-4 animate-spin text-white" /> Réparation...
-              {:else if $repairSuccess}
-                  <CheckCircle2 class="w-4 h-4 text-white" /> Réparé !
-              {:else}
-                  🛠️ Réparer Saisons Incomplètes
-              {/if}
-          </button>
-          {#if $allBrokenCount > 0}
-            <button on:click={deleteAllBrokenSymlinks} class="btn btn-red-deep w-full justify-start" disabled={$bulkDeleting}>
-              {#if $bulkDeleting}
-                <Loader2 class="w-4 h-4 animate-spin text-white" /> Suppression...
-              {:else if $bulkDeleteSuccess}
-                <CheckCircle2 class="w-4 h-4 text-white" /> Supprimés !
-              {:else}
-                <Trash class="w-4 h-4" /> Supprimer {$allBrokenCount} symlink{s($allBrokenCount)} cassé{s($allBrokenCount)}
-              {/if}
-            </button>
-          {/if}
-          <button on:click={exportJSON} class="btn btn-indigo-deep w-full justify-start">
-            {#if $exporting}
-              <Loader2 class="w-4 h-4 animate-spin" />
-            {:else if $exportSuccess}
-              <CheckCircle2 class="w-4 h-4 text-white" /> Exported
-            {:else}
-              <Download class="w-4 h-4" /> Export
-            {/if}
-          </button>
-          <label class="btn btn-cyan-deep w-full justify-start cursor-pointer">
-            {#if $importing}
-              <Loader2 class="w-4 h-4 animate-spin" />
-            {:else if $importSuccess}
-              <CheckCircle2 class="w-4 h-4 text-white" /> Imported
-            {:else}
-              <Upload class="w-4 h-4" /> Import
-            {/if}
-            <input type="file" accept="application/json" class="hidden" on:change={importJSON} />
-          </label>
-        </div>
-      </details>
-    </div>
+        <details bind:this={menu} class="relative">
+            <summary
+                class="flex items-center justify-between px-5 py-3 bg-gradient-to-r from-emerald-600 to-teal-500 text-white rounded-lg shadow-md cursor-pointer text-sm font-semibold tracking-wide transition-transform duration-150 hover:scale-[1.03] focus:outline-none focus:ring-2 focus:ring-emerald-400"
+            >
+                🌐 Tableau de bord
+                <ChevronDown class="w-4 h-4 opacity-80 transition-transform duration-200 group-open:rotate-180" />
+            </summary>
 
+            <div
+                class="absolute z-10 mt-1 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg shadow-md p-2 space-y-2 w-full max-w-xs"
+            >
+                <button
+                    on:click={() => handleAndClose(() => showOrphansOnly.update(v => !v))}
+                    class="btn btn-emerald-deep w-full justify-start truncate"
+                >
+                    <Filter class="w-4 h-4" /> Symlinks Brisés
+                </button>
+
+                <button
+                    on:click={() => handleAndClose(repairMissingSeasons)}
+                    class="btn btn-indigo-deep w-full justify-start truncate"
+                    disabled={$repairing}
+                >
+                    {#if $repairing}
+                        <Loader2 class="w-4 h-4 animate-spin text-white" /> Réparation...
+                    {:else if $repairSuccess}
+                        <CheckCircle2 class="w-4 h-4 text-white" /> Réparé !
+                    {:else}
+                        🛠️ Réparer Saisons Incomplètes
+                    {/if}
+                </button>
+
+                {#if $allBrokenCount > 0}
+                    <button
+                        on:click={() => handleAndClose(deleteAllBrokenSymlinks)}
+                        class="btn btn-red-deep animate-pulse-strong w-full justify-start truncate"
+                        disabled={$bulkDeleting}
+                    >
+                        {#if $bulkDeleting}
+                            <Loader2 class="w-4 h-4 animate-spin text-white" /> Suppression...
+                        {:else if $bulkDeleteSuccess}
+                            <CheckCircle2 class="w-4 h-4 text-white" /> Supprimés !
+                        {:else}
+                            <Trash class="w-4 h-4" /> Supprimer {$allBrokenCount} symlink{s($allBrokenCount)} cassé{s($allBrokenCount)}
+                        {/if}
+                    </button>
+                {/if}
+
+                {#if $hasDuplicates}
+                    <button
+                        on:click={() => handleAndClose(() => showDuplicatesOnly.update(v => !v))}
+                        class="btn btn-yellow-deep animate-pulse-strong w-full justify-start truncate"
+                    >
+                        🧠 { $showDuplicatesOnly ? 'Afficher tout' : 'Voir les doublons' }
+                    </button>
+                {/if}
+
+                <button
+                    on:click={() => handleAndClose(exportJSON)}
+                    class="btn btn-indigo-deep w-full justify-start truncate"
+                >
+                    {#if $exporting}
+                        <Loader2 class="w-4 h-4 animate-spin" />
+                    {:else if $exportSuccess}
+                        <CheckCircle2 class="w-4 h-4 text-white" /> Exported
+                    {:else}
+                        <Download class="w-4 h-4" /> Export
+                    {/if}
+                </button>
+
+                <label class="btn btn-cyan-deep w-full justify-start cursor-pointer truncate">
+                    {#if $importing}
+                        <Loader2 class="w-4 h-4 animate-spin" />
+                    {:else if $importSuccess}
+                        <CheckCircle2 class="w-4 h-4 text-white" /> Imported
+                    {:else}
+                        <Upload class="w-4 h-4" /> Import
+                    {/if}
+                    <input
+                        type="file"
+                        accept="application/json"
+                        class="hidden"
+                        on:change={(e) => {
+                            importJSON(e);
+                            menu?.removeAttribute('open'); // fermeture manuelle ici aussi
+                        }}
+                    />
+                </label>
+
+                <button
+                    on:click={() => handleAndClose(refreshList)}
+                    class="btn btn-blue w-full justify-start truncate"
+                >
+                    {#if $refreshing}
+                        <Loader2 class="w-4 h-4 animate-spin" /> Refreshing
+                    {:else if $refreshSuccess}
+                        <CheckCircle2 class="w-4 h-4 text-green-500" /> Refreshed
+                    {:else}
+                        <RefreshCw class="w-4 h-4" /> Refresh
+                    {/if}
+                </button>
+
+                <button
+                    on:click={() => handleAndClose(triggerScan)}
+                    class="btn btn-red-deep w-full justify-start truncate"
+                >
+                    {#if $scanning}
+                        <Loader2 class="w-4 h-4 animate-spin" />
+                    {:else if $scanSuccess}
+                        <CheckCircle2 class="w-4 h-4 text-white" /> Scanned
+                    {:else}
+                        <Scan class="w-4 h-4" /> Scan
+                    {/if}
+                </button>
+
+                <button
+                    on:click={() => handleAndClose(() => goto('/settings/symlinks/setup'))}
+                    class="btn btn-gray w-full justify-start truncate"
+                >
+                    ⚙️ Configuration
+                </button>
+            </div>
+        </details>
+    </div>
     <!-- 👈 Boutons desktop -->
     <div class="hidden md:flex flex-wrap gap-2">
       <button on:click={() => showOrphansOnly.update(v => !v)} class="btn btn-emerald-deep">
@@ -622,16 +807,28 @@
               🛠️ Réparer Saisons Incomplètes
           {/if}
       </button>
+      {#if $hasDuplicates}
+          <button
+              on:click={() => showDuplicatesOnly.update(v => !v)}
+              class="btn btn-yellow-deep animate-pulse-strong"
+          >
+              🧠 { $showDuplicatesOnly ? 'Afficher tout' : 'Voir les doublons' }
+          </button>
+      {/if}
       {#if $allBrokenCount > 0}
-        <button on:click={deleteAllBrokenSymlinks} class="btn btn-red-deep" disabled={$bulkDeleting}>
-          {#if $bulkDeleting}
-            <Loader2 class="w-4 h-4 animate-spin text-white" /> Suppression...
-          {:else if $bulkDeleteSuccess}
-            <CheckCircle2 class="w-4 h-4 text-white" /> Supprimés !
-          {:else}
-            <Trash class="w-4 h-4" /> Supprimer {$allBrokenCount} symlink{s($allBrokenCount)} cassé{s($allBrokenCount)}
-          {/if}
-        </button>
+            <button
+                on:click={deleteAllBrokenSymlinks}
+                class="btn btn-red-deep animate-pulse-strong"
+                disabled={$bulkDeleting}
+            >
+                {#if $bulkDeleting}
+                    <Loader2 class="w-4 h-4 animate-spin text-white" /> Suppression...
+                {:else if $bulkDeleteSuccess}
+                    <CheckCircle2 class="w-4 h-4 text-white" /> Supprimés !
+                {:else}
+                    <Trash class="w-4 h-4" /> Supprimer {$allBrokenCount} symlink{s($allBrokenCount)} cassé{s($allBrokenCount)}
+                {/if}
+            </button>
       {/if}
       <button on:click={exportJSON} class="btn btn-indigo-deep">
         {#if $exporting}
@@ -655,28 +852,28 @@
     </div>
 
     <!-- 🔺 Boutons à droite -->
-    <div class="flex flex-wrap gap-2 justify-end">
-      <button on:click={refreshList} class="btn btn-blue">
-        {#if $refreshing}
-          <Loader2 class="w-4 h-4 animate-spin" /> Refreshing
-        {:else if $refreshSuccess}
-          <CheckCircle2 class="w-4 h-4 text-green-500" /> Refreshed
-        {:else}
-          <RefreshCw class="w-4 h-4" /> Refresh
-        {/if}
-      </button>
-      <button on:click={triggerScan} class="btn btn-red-deep">
-        {#if $scanning}
-          <Loader2 class="w-4 h-4 animate-spin" />
-        {:else if $scanSuccess}
-          <CheckCircle2 class="w-4 h-4 text-white" /> Scanned
-        {:else}
-          <Scan class="w-4 h-4" /> Scan
-        {/if}
-      </button>
-      <button on:click={() => goto('/settings/alfred/setup')} class="btn btn-gray">
-        ⚙️ Configuration
-      </button>
+    <div class="hidden md:flex flex-wrap gap-2 justify-end">
+        <button on:click={refreshList} class="btn btn-blue">
+            {#if $refreshing}
+                <Loader2 class="w-4 h-4 animate-spin" /> Refreshing
+            {:else if $refreshSuccess}
+                <CheckCircle2 class="w-4 h-4 text-green-500" /> Refreshed
+            {:else}
+                <RefreshCw class="w-4 h-4" /> Refresh
+            {/if}
+        </button>
+        <button on:click={triggerScan} class="btn btn-red-deep">
+            {#if $scanning}
+                <Loader2 class="w-4 h-4 animate-spin" />
+            {:else if $scanSuccess}
+                <CheckCircle2 class="w-4 h-4 text-white" /> Scanned
+            {:else}
+                <Scan class="w-4 h-4" /> Scan
+            {/if}
+        </button>
+        <button on:click={() => goto('/settings/symlinks/setup')} class="btn btn-gray">
+            ⚙️ Configuration
+        </button>
     </div>
   </div>
 
@@ -779,7 +976,7 @@
 </div>
 
 <div class="space-y-4 mt-6">
-  {#each $symlinks as item, index}
+  {#each $symlinks as item}
     <div class="p-4 rounded-xl shadow bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-200 transition hover:scale-[1.01]">
       <div class="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-4">
         <div class="flex-1 space-y-1">
@@ -829,26 +1026,50 @@
 </main>
 
 <style>
-  .btn {
-    @apply inline-flex items-center gap-2 justify-center px-4 py-2 text-sm font-medium rounded-md shadow-sm transition-transform duration-200 hover:scale-[1.02] focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 disabled:opacity-50 disabled:pointer-events-none;
-  }
-  .btn-blue {
-    @apply bg-blue-500 hover:bg-blue-600 text-white focus-visible:ring-blue-300;
-  }
-  .btn-gray {
-    @apply bg-gray-500 hover:bg-gray-600 text-white focus-visible:ring-gray-300;
-  }
-  .btn-emerald-deep {
-    @apply bg-emerald-700 hover:bg-emerald-800 text-white focus-visible:ring-emerald-500;
-  }
-  .btn-red-deep {
-    @apply bg-red-700 hover:bg-red-800 text-white focus-visible:ring-red-500;
-  }
-  .btn-indigo-deep {
-    @apply bg-indigo-600 hover:bg-indigo-700 text-white focus-visible:ring-indigo-400;
-  }
-  .btn-cyan-deep {
-    @apply bg-cyan-600 hover:bg-cyan-700 text-white focus-visible:ring-cyan-400;
-  }
+    .btn {
+        @apply inline-flex items-center gap-2 justify-center px-4 py-2 text-sm font-medium rounded-md shadow-sm transition-transform duration-200 hover:scale-[1.02] focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 disabled:opacity-50 disabled:pointer-events-none;
+    }
 
+    .btn-blue {
+        @apply bg-blue-500 hover:bg-blue-600 text-white focus-visible:ring-blue-300;
+    }
+
+    .btn-gray {
+        @apply bg-gray-500 hover:bg-gray-600 text-white focus-visible:ring-gray-300;
+    }
+
+    .btn-emerald-deep {
+        @apply bg-emerald-700 hover:bg-emerald-800 text-white focus-visible:ring-emerald-500;
+    }
+
+    .btn-red-deep {
+        @apply bg-red-700 hover:bg-red-800 text-white focus-visible:ring-red-500;
+    }
+
+    .btn-indigo-deep {
+        @apply bg-indigo-600 hover:bg-indigo-700 text-white focus-visible:ring-indigo-400;
+    }
+
+    .btn-cyan-deep {
+        @apply bg-cyan-600 hover:bg-cyan-700 text-white focus-visible:ring-cyan-400;
+    }
+
+    .btn-yellow-deep {
+        @apply bg-yellow-500 hover:bg-yellow-600 text-white focus-visible:ring-yellow-300;
+    }
+
+    .animate-pulse-strong {
+        animation: pulseStrong 1.5s infinite;
+    }
+
+    @keyframes pulseStrong {
+        0%, 100% {
+            transform: scale(1);
+            opacity: 1;
+        }
+        50% {
+            transform: scale(1.05);
+            opacity: 0.85;
+        }
+    }
 </style>

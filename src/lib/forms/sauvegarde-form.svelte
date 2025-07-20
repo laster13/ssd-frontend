@@ -6,7 +6,6 @@
   import { Loader2, CheckCircle2, CalendarCheck2, Clock8, Dot } from 'lucide-svelte';
   import { toast } from 'svelte-sonner';
   import * as Form from '$lib/components/ui/form';
-
   const activeTab = writable<'medias' | 'docker'>('medias');
 
   // MÉDIAS
@@ -248,22 +247,39 @@ async function runDockerBackup(name: string) {
   });
 </script>
 
-<div class="p-6 space-y-6">
-  <div class="flex flex-col sm:flex-row border-b border-gray-300 dark:border-zinc-700 gap-2 sm:gap-0">
+<div class="w-full max-w-none px-4 sm:px-6 lg:px-8 space-y-6">
+  <div class="relative flex gap-2 p-1 rounded-2xl bg-white/80 dark:bg-zinc-900/60 backdrop-blur-md border border-gray-200 dark:border-zinc-700 shadow-inner overflow-hidden">
+
+    <!-- Onglet Liens Symboliques -->
     <button
-      class="px-4 py-2 font-semibold text-indigo-600 dark:text-indigo-400 text-sm rounded-t sm:rounded-t-none sm:rounded-l hover:bg-gray-100 dark:hover:bg-zinc-800 transition-colors w-full sm:w-auto"
-      class:font-bold={$activeTab === 'medias'}
+      class="relative flex-1 px-4 py-2 text-sm sm:text-base font-medium sm:font-semibold rounded-xl z-10 transition-all duration-200 ease-in-out focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400 focus-visible:ring-offset-1"
+      class:text-emerald-600={$activeTab === 'medias'}
+      class:text-gray-500={!($activeTab === 'medias')}
       on:click={() => activeTab.set('medias')}
-    >📁 Liens Symboliques</button>
+    >
+      📁 Liens Symboliques
+      {#if $activeTab === 'medias'}
+        <span class="absolute inset-0 bg-emerald-100 dark:bg-emerald-700/30 rounded-xl -z-10 transition-all duration-200 ease-in-out"></span>
+      {/if}
+    </button>
+
+    <!-- Onglet Docker -->
     <button
-      class="px-4 py-2 font-semibold text-indigo-600 dark:text-indigo-400 text-sm rounded-t sm:rounded-t-none sm:rounded-l hover:bg-gray-100 dark:hover:bg-zinc-800 transition-colors w-full sm:w-auto"
-      class:font-bold={$activeTab === 'docker'}
+      class="relative flex-1 px-4 py-2 text-sm sm:text-base font-medium sm:font-semibold rounded-xl z-10 transition-all duration-200 ease-in-out focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400 focus-visible:ring-offset-1"
+      class:text-emerald-600={$activeTab === 'docker'}
+      class:text-gray-500={!($activeTab === 'docker')}
       on:click={() => activeTab.set('docker')}
-    >🐳 Applications Docker</button>
+    >
+      🐳 Applications Docker
+      {#if $activeTab === 'docker'}
+        <span class="absolute inset-0 bg-emerald-100 dark:bg-emerald-700/30 rounded-xl -z-10 transition-all duration-200 ease-in-out"></span>
+      {/if}
+    </button>
+
   </div>
 
   {#if $activeTab === 'medias'}
-    <div class="p-6 space-y-6" transition:fade>
+    <div class="space-y-6 w-full m-0" transition:fade>
       <h2 class="text-xl font-semibold text-sky-600 dark:text-sky-400 mb-4">Planification des Sauvegardes de Liens Symboliques </h2>
       {#each allFolders as folder (folder)}
         <div class="border p-4 rounded-xl shadow-sm hover:shadow-md transition-shadow duration-200 space-y-4" in:fly={{ y: 20, duration: 300 }} out:fade>
@@ -328,7 +344,7 @@ async function runDockerBackup(name: string) {
       {/each}
     </div>
   {:else if $activeTab === 'docker'}
-    <div class="p-6 space-y-6" transition:fade>
+    <div class="space-y-6 w-full m-0" transition:fade>
       <h2 class="text-xl font-semibold text-sky-600 dark:text-sky-400 mb-4">Planification des Sauvegardes Docker</h2>
 
       <div class="flex flex-col sm:flex-row gap-4 items-start sm:items-center">
