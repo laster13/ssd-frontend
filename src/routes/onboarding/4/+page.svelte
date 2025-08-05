@@ -1,84 +1,95 @@
-<script>
-  import { onMount } from 'svelte';
-  import { writable } from 'svelte/store';
-  import { Save, Loader2, Trash2 } from 'lucide-svelte';
+<script lang="ts">
+	import { page } from '$app/stores';
+	import { Separator } from '$lib/components/ui/separator';
+	import { Progress } from '$lib/components/ui/progress';
+	import { getContext } from 'svelte';
+	import type { Writable } from 'svelte/store';
+	import { onMount } from 'svelte';
+	import { writable } from 'svelte/store';
+	import { Save, Loader2, Trash2 } from 'lucide-svelte';
 
-  const linksDirs = writable([]);
-  const mountDirs = writable([]);
-  const radarrApiKey = writable('');
-  const sonarrApiKey = writable('');
-  const message = writable('');
-  const saving = writable(false);
+	const formProgress = getContext<Writable<number>>('formProgress');
+	formProgress.set(4);
 
-  async function loadConfig() {
-    try {
-      const res = await fetch('/api/v1/symlinks/config');
-      if (res.ok) {
-        const data = await res.json();
-        linksDirs.set(data.links_dirs || []);
-        mountDirs.set(data.mount_dirs || []);
-        radarrApiKey.set(data.radarr_api_key || '');
-        sonarrApiKey.set(data.sonarr_api_key || '');
-      } else {
-        message.set('Erreur lors du chargement de la configuration');
-      }
-    } catch {
-      message.set('Erreur réseau lors du chargement');
-    }
-  }
+	const linksDirs = writable<string[]>([]);
+	const mountDirs = writable<string[]>([]);
+	const radarrApiKey = writable('');
+	const sonarrApiKey = writable('');
+	const message = writable('');
+	const saving = writable(false);
 
-  async function saveConfig() {
-    saving.set(true);
-    message.set('');
-    try {
-      const res = await fetch('/api/v1/symlinks/config', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          links_dirs: $linksDirs,
-          mount_dirs: $mountDirs,
-          radarr_api_key: $radarrApiKey,
-          sonarr_api_key: $sonarrApiKey
-        })
-      });
-      if (res.ok) {
-        message.set('Configuration sauvegardée avec succès !');
-      } else {
-        message.set('Erreur lors de la sauvegarde');
-      }
-    } catch {
-      message.set('Erreur réseau lors de la sauvegarde');
-    } finally {
-      saving.set(false);
-    }
-  }
+	async function loadConfig() {
+		try {
+			const res = await fetch('/api/v1/symlinks/config');
+			if (res.ok) {
+				const data = await res.json();
+				linksDirs.set(data.links_dirs || []);
+				mountDirs.set(data.mount_dirs || []);
+				radarrApiKey.set(data.radarr_api_key || '');
+				sonarrApiKey.set(data.sonarr_api_key || '');
+			} else {
+				message.set('Erreur lors du chargement de la configuration');
+			}
+		} catch {
+			message.set('Erreur réseau lors du chargement');
+		}
+	}
 
-  function addLinksDir() {
-    linksDirs.update(dirs => [...dirs, '']);
-  }
+	async function saveConfig() {
+		saving.set(true);
+		message.set('');
+		try {
+			const res = await fetch('/api/v1/symlinks/config', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({
+					links_dirs: $linksDirs,
+					mount_dirs: $mountDirs,
+					radarr_api_key: $radarrApiKey,
+					sonarr_api_key: $sonarrApiKey
+				})
+			});
+			if (res.ok) {
+				message.set('Configuration sauvegardée avec succès !');
+			} else {
+				message.set('Erreur lors de la sauvegarde');
+			}
+		} catch {
+			message.set('Erreur réseau lors de la sauvegarde');
+		} finally {
+			saving.set(false);
+		}
+	}
 
-  function addMountDir() {
-    mountDirs.update(dirs => [...dirs, '']);
-  }
+	function addLinksDir() {
+		linksDirs.update(dirs => [...dirs, '']);
+	}
 
-  function removeLinksDir(index) {
-    linksDirs.update(dirs => dirs.filter((_, i) => i !== index));
-  }
+	function addMountDir() {
+		mountDirs.update(dirs => [...dirs, '']);
+	}
 
-  function removeMountDir(index) {
-    mountDirs.update(dirs => dirs.filter((_, i) => i !== index));
-  }
+	function removeLinksDir(index: number) {
+		linksDirs.update(dirs => dirs.filter((_, i) => i !== index));
+	}
 
-  onMount(loadConfig);
+	function removeMountDir(index: number) {
+		mountDirs.update(dirs => dirs.filter((_, i) => i !== index));
+	}
+
+	onMount(loadConfig);
 </script>
 
-<main class="w-full max-w-full sm:max-w-xl md:max-w-3xl lg:max-w-5xl xl:max-w-7xl mx-auto p-8 space-y-6 bg-white text-gray-900 dark:bg-gray-900 dark:text-gray-200">
-  <div class="space-y-1 w-full">
-    <h1 class="text-2xl font-semibold text-emerald-600 dark:text-emerald-400">Configuration Symlinks</h1>
-    <p class="text-sm text-gray-600 dark:text-gray-400">
-      Définissez les dossiers utilisés pour les liens symboliques et les clés API de Radarr/Sonarr.
-    </p>
-  </div>
+<main class="flex h-full w-full flex-col items-center overflow-x-hidden p-8 py-32 md:px-24 lg:px-32">
+	<div class="flex w-full max-w-6xl flex-col items-start">
+		<Progress class="mb-2 w-full" max={4} value={$formProgress} />
+		<h1 class="mb-2 text-2xl font-bold md:text-3xl lg:text-4xl">Étape 4/4 : Configuration des symlinks</h1>
+		<p class="text-base md:text-lg text-gray-600 dark:text-gray-400">Définissez les dossiers utilisés pour les liens symboliques et les clés API de Radarr/Sonarr.
+</p>
+	</div>
+
+	<div class="mt-4 flex w-full max-w-6xl flex-col">
+		<Separator class="mb-8" />
 
   <form class="w-full space-y-6" on:submit|preventDefault={saveConfig}>
     <!-- Dossiers Liens Symboliques -->
@@ -187,8 +198,14 @@
       {/if}
     </div>
   </form>
-</main>
+	</div>
 
+	<div class="mt-8 self-end">
+		<a href="/onboarding/ssd" class="inline-flex items-center gap-2 rounded-lg bg-gradient-to-r from-emerald-600 to-teal-500 px-5 py-2.5 text-white shadow-md transition-transform duration-150 hover:scale-[1.03] focus:outline-none focus:ring-2 focus:ring-emerald-400">
+			✅ Terminer
+		</a>
+	</div>
+</main>
 <style>
   label {
     color: var(--text-color);
@@ -200,3 +217,4 @@
     display: block;
   }
 </style>
+

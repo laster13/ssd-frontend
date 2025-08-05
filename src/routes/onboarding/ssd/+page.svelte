@@ -3,8 +3,7 @@
 	import { animate, stagger } from 'motion';
 	import { onMount } from 'svelte';
 	import { Button } from '$lib/components/ui/button';
-	import { Rocket, Mountain } from 'lucide-svelte';
-
+	import { Plane, Rocket } from 'lucide-svelte';
 	// export let data: PageData;
 
 	let rootElement: HTMLElement;
@@ -45,14 +44,14 @@
 >
 <div class:opacity-0={!inView} class="flex h-full w-full flex-col items-center justify-center">
     <div class="slide-up flex items-center justify-center">
-        <Mountain class="h-16 w-16" />
+    <Plane class="h-16 w-16" />
+
     </div>
 
     <h1 class="slide-up text-center text-3xl font-medium">L'installation SSDv2 est maintenant terminée!</h1>
     <p
         class="slide-up max-w-lg text-center text-base text-muted-foreground md:max-w-2xl md:text-lg"
     >
-        Riven optimisé avec SSDv2 et l'API Yggflix pour un accès aux releases françaises.
     </p>
 
     <!-- Conteneur des boutons, organisé en ligne avec `flex-row` -->

@@ -5,8 +5,7 @@
 	import { getContext } from 'svelte';
 	import type { Writable } from 'svelte/store';
 	import type { NavItem } from '$lib/types';
-	import { Mountain, MoreHorizontal } from 'lucide-svelte';
-  import { Plane } from 'lucide-svelte';
+        import { Plane, MoreHorizontal } from 'lucide-svelte';
 	import ThemeSwitcher from '$lib/components/theme-switcher.svelte';
 	import NavigationItem from '$lib/components/header-item.svelte';
 	import { Button } from '$lib/components/ui/button';

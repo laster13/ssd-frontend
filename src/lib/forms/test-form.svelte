@@ -138,13 +138,6 @@
 <form method="POST" action={actionUrl} use:enhance class="my-8 flex flex-col gap-2" on:submit={handleFormSuccess}>
 
     <!-- Logs en temps réel avec case à cocher -->
-    <div class="flex flex-col items-start">
-        <div class="flex items-center">
-            <span for="showLogs" class="flex items-center font-medium text-sm">Afficher les logs</span>
-            <input type="checkbox" bind:checked={showLogs} class="ml-9" id="showLogs" />
-        </div>
-        <p class="text-gray-500 text-sm mt-1">Logs en temps réel</p>
-    </div>
 
     <!-- Affichage en fonction de l'existence du fichier avec un label -->
     <div class="flex items-center space-x-4">
@@ -179,7 +172,7 @@
                     <Loader2 class="mr-2 h-4 w-4 animate-spin" />
                     <p class="text-sm text-gray-500">Soumission en cours...</p>
                 {:else}
-                    Sauvegarder
+                    Synchroniser
                     <span class="ml-1" class:hidden={$page.url.pathname === '/settings/test'}>
                         et continuer
                     </span>

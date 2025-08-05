@@ -3,10 +3,17 @@
   import { writable } from 'svelte/store';
   import axios from 'axios';
   import { fly, fade, slide } from 'svelte/transition';
-  import { Loader2, CheckCircle2, CalendarCheck2, Clock8, Dot } from 'lucide-svelte';
+  import { Loader2, CheckCircle2, CalendarCheck2, Clock8, Dot, RotateCcw } from 'lucide-svelte';
   import { toast } from 'svelte-sonner';
   import * as Form from '$lib/components/ui/form';
+
   const activeTab = writable<'medias' | 'docker'>('medias');
+  export const containerName: string = '';
+
+  const dockerBackups: Record<string, string[]> = {};
+  let dockerSelectedBackup: Record<string, string> = {};
+  let showBackups = {};
+  const restoring = writable(false);
 
   // MÉDIAS
   const folders = writable<string[]>([]);
@@ -17,6 +24,10 @@
   const savedSuccess = writable<Record<string, boolean>>({});
   const collapsed = writable<Record<string, boolean>>({});
   const progress = writable<Record<string, number>>({});
+  const restoringSymlink = writable<Record<string, boolean>>({});
+  const progressSymlink = writable<Record<string, number>>({});
+  $: restoringSymlinkMap = $restoringSymlink;
+  $: progressSymlinkMap = $progressSymlink;
 
   // DOCKER
   const containers = writable<string[]>([]);
@@ -29,7 +40,7 @@
   const dockerSavedSuccess = writable<Record<string, boolean>>({});
   const dockerLoadingSave = writable<Record<string, boolean>>({});
   const dockerLoadingBackup = writable<Record<string, boolean>>({}); // ✅ ajouté
-
+  const dockerRestoring = writable<Record<string, boolean>>({});
 
   const days = [
     { code: "mon", label: "Lundi" },
@@ -56,10 +67,114 @@
   $: dockerLoadingSaveMap = $dockerLoadingSave;
   $: dockerLoadingMap = $dockerLoadingBackup; // ✅ mapping correct
 
-axios.interceptors.request.use((config) => {
-  console.log("[AXIOS]", config.method?.toUpperCase(), config.url);
-  return config;
-});
+  axios.interceptors.request.use((config) => {
+    console.log("[AXIOS]", config.method?.toUpperCase(), config.url);
+    return config;
+  });
+
+  function toggleBackups(name) {
+    if (!dockerSelectedBackup[name]) {
+      showBackups[name] = false;
+    }
+  }
+
+  function closeBackups(name) {
+    showBackups[name] = false;
+    dockerSelectedBackup[name] = '';
+  }
+
+  async function fetchBackupsFor(name: string) {
+    const tab = $activeTab; // récupération du contexte
+    let url;
+
+    if (tab === 'docker') {
+      url = `/api/v1/docker/backups/${encodeURIComponent(name)}/`;
+    } else if (tab === 'medias') {
+      url = `/api/v1/media-backups/backups/${encodeURIComponent(name)}/`;
+    } else {
+      toast.error("Type de sauvegarde inconnu.");
+      return [];
+    }
+
+    try {
+      const res = await axios.get(url);
+      dockerBackups[name] = res.data;
+      return res.data;
+    } catch (err) {
+      toast.error(`Erreur lors du chargement des sauvegardes pour ${name}`);
+      throw err;
+    }
+  }
+
+  function restoreDockerBackup(name: string) {
+    const file = dockerSelectedBackup[name];
+    if (!file) return;
+
+    dockerRestoring.update((r) => ({ ...r, [name]: true }));
+    dockerProgress.update((p) => ({ ...p, [name]: 0 }));
+
+    const interval = setInterval(() => {
+      dockerProgress.update((p) => ({
+        ...p,
+        [name]: Math.min(100, (p[name] || 0) + 20),
+      }));
+    }, 250);
+
+    setTimeout(() => {
+      clearInterval(interval);
+      dockerProgress.update((p) => ({ ...p, [name]: 100 }));
+
+      setTimeout(() => {
+        dockerProgress.update((p) => ({ ...p, [name]: 0 }));
+      }, 1000);
+
+      dockerRestoring.update((r) => ({ ...r, [name]: false }));
+    }, 5000);
+
+    axios
+      .post(`/api/v1/docker/restore/`, { name, file })
+      .then(() => {
+        toast.success(`✅ Restauration de ${file} lancée pour ${name}`);
+      })
+      .catch(() => {
+        toast.error("Erreur lors de la restauration.");
+      });
+  }
+
+  function restoreSymlinkBackup(folder: string) {
+    const file = dockerSelectedBackup[folder];
+    if (!file) return;
+
+    restoringSymlink.update(r => ({ ...r, [folder]: true }));
+    progressSymlink.update(p => ({ ...p, [folder]: 0 }));
+
+    const interval = setInterval(() => {
+      progressSymlink.update(p => ({
+        ...p,
+        [folder]: Math.min(100, (p[folder] || 0) + 20)
+      }));
+    }, 250);
+
+    setTimeout(() => {
+      clearInterval(interval);
+      progressSymlink.update(p => ({ ...p, [folder]: 100 }));
+
+      setTimeout(() => {
+        progressSymlink.update(p => ({ ...p, [folder]: 0 }));
+      }, 1000);
+
+      restoringSymlink.update(r => ({ ...r, [folder]: false }));
+    }, 5000);
+
+    axios
+      .post(`/api/v1/media-backups/restore/`, { name: folder, file })
+      .then(() => {
+        toast.success(`✅ Restauration de ${file} lancée pour ${folder}`);
+      })
+      .catch(() => {
+        toast.error("Erreur lors de la restauration symlink.");
+      });
+  }
 
   // MÉDIAS functions
   function updateEditedDay(folder: string, day: string) {
@@ -156,31 +271,35 @@ axios.interceptors.request.use((config) => {
     }
   }
 
-async function runDockerBackup(name: string) {
-  dockerLoadingBackup.update(l => ({ ...l, [name]: true }));
-  dockerProgress.update(p => ({ ...p, [name]: 0 }));
+  function runDockerBackup(name: string) {
+    dockerLoadingBackup.update(l => ({ ...l, [name]: true }));
+    dockerProgress.update(p => ({ ...p, [name]: 0 }));
 
-  const interval = setInterval(() => {
-    dockerProgress.update(p => ({
-      ...p,
-      [name]: Math.min(100, (p[name] || 0) + 10)
-    }));
-  }, 250);
+    const interval = setInterval(() => {
+      dockerProgress.update(p => ({
+        ...p,
+        [name]: Math.min(100, (p[name] || 0) + 10)
+      }));
+    }, 250);
 
-  try {
-    await axios.post('/api/v1/docker/run/', { name });
-    toast.success(`✅ Sauvegarde lancée pour ${name}`);
-  } catch {
-    toast.error("Erreur lors de la sauvegarde docker");
-  } finally {
-    clearInterval(interval);
-    dockerProgress.update(p => ({ ...p, [name]: 100 }));
+    // ✅ Arrêt forcé après 5 secondes
     setTimeout(() => {
-      dockerProgress.update(p => ({ ...p, [name]: 0 }));
-    }, 1500);
-    dockerLoadingBackup.update(l => ({ ...l, [name]: false }));
+      clearInterval(interval);
+      dockerProgress.update(p => ({ ...p, [name]: 100 }));
+
+      setTimeout(() => {
+        dockerProgress.update(p => ({ ...p, [name]: 0 }));
+      }, 1000);
+
+      dockerLoadingBackup.update(l => ({ ...l, [name]: false }));
+      toast.success(`✅ Sauvegarde lancée pour ${name}`);
+    }, 5000);
+
+    // ✅ Requête non bloquante
+    axios.post('/api/v1/docker/run/', { name }).catch((err) => {
+      console.warn("Erreur de requête (non bloquante) :", err.message);
+    });
   }
-}
 
   async function saveDockerSchedule() {
     if (!current) return;
@@ -248,8 +367,9 @@ async function runDockerBackup(name: string) {
 </script>
 
 <div class="w-full max-w-none px-4 sm:px-6 lg:px-8 space-y-6">
-  <div class="relative flex gap-2 p-1 rounded-2xl bg-white/80 dark:bg-zinc-900/60 backdrop-blur-md border border-gray-200 dark:border-zinc-700 shadow-inner overflow-hidden">
-
+  <div
+    class="relative flex gap-2 p-1 rounded-2xl bg-white/80 dark:bg-zinc-900/60 backdrop-blur-md border border-gray-200 dark:border-zinc-700 shadow-inner overflow-hidden"
+  >
     <!-- Onglet Liens Symboliques -->
     <button
       class="relative flex-1 px-4 py-2 text-sm sm:text-base font-medium sm:font-semibold rounded-xl z-10 transition-all duration-200 ease-in-out focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400 focus-visible:ring-offset-1"
@@ -259,7 +379,9 @@ async function runDockerBackup(name: string) {
     >
       📁 Liens Symboliques
       {#if $activeTab === 'medias'}
-        <span class="absolute inset-0 bg-emerald-100 dark:bg-emerald-700/30 rounded-xl -z-10 transition-all duration-200 ease-in-out"></span>
+        <span
+          class="absolute inset-0 bg-emerald-100 dark:bg-emerald-700/30 rounded-xl -z-10 transition-all duration-200 ease-in-out"
+        ></span>
       {/if}
     </button>
 
@@ -272,17 +394,24 @@ async function runDockerBackup(name: string) {
     >
       🐳 Applications Docker
       {#if $activeTab === 'docker'}
-        <span class="absolute inset-0 bg-emerald-100 dark:bg-emerald-700/30 rounded-xl -z-10 transition-all duration-200 ease-in-out"></span>
+        <span
+          class="absolute inset-0 bg-emerald-100 dark:bg-emerald-700/30 rounded-xl -z-10 transition-all duration-200 ease-in-out"
+        ></span>
       {/if}
     </button>
-
   </div>
 
   {#if $activeTab === 'medias'}
     <div class="space-y-6 w-full m-0" transition:fade>
-      <h2 class="text-xl font-semibold text-sky-600 dark:text-sky-400 mb-4">Planification des Sauvegardes de Liens Symboliques </h2>
+      <h2 class="text-xl font-semibold text-sky-600 dark:text-sky-400 mb-4">
+        Planification des Sauvegardes de Liens Symboliques
+      </h2>
       {#each allFolders as folder (folder)}
-        <div class="border p-4 rounded-xl shadow-sm hover:shadow-md transition-shadow duration-200 space-y-4" in:fly={{ y: 20, duration: 300 }} out:fade>
+        <div
+          class="border p-4 rounded-xl shadow-sm hover:shadow-md transition-shadow duration-200 space-y-4"
+          in:fly={{ y: 20, duration: 300 }}
+          out:fade
+        >
           <div
             class="text-lg font-semibold text-emerald-600 dark:text-emerald-400 flex items-center gap-2 cursor-pointer"
             role="button"
@@ -294,17 +423,39 @@ async function runDockerBackup(name: string) {
             <Dot class={hasSchedule(folder) ? 'text-green-500' : 'text-red-500'} />
           </div>
           {#if !collapsedMap[folder]}
-            <div class="flex flex-col lg:flex-row gap-4 items-start lg:items-center justify-between" transition:slide>
+            <div
+              class="flex flex-col lg:flex-row gap-4 items-start lg:items-center justify-between"
+              transition:slide
+            >
               <div class="flex flex-col sm:flex-row gap-4 items-start sm:items-center">
                 <label for="day-{folder}">Jour :</label>
-                <select id="day-{folder}" on:change={(e) => updateEditedDay(folder, e.target.value)} class="border rounded px-2 py-1 transition-all duration-200 hover:scale-[1.02]">
+                <select
+                  id="day-{folder}"
+                  on:change={(e) => updateEditedDay(folder, e.target.value)}
+                  class="border rounded px-2 py-1 transition-all duration-200 hover:scale-[1.02]"
+                >
                   {#each days as dayObj}
-                    <option value={dayObj.code} selected={dayObj.code === allEdited[folder]?.day}>{dayObj.label}</option>
+                    <option value={dayObj.code} selected={dayObj.code === (allEdited[folder]?.day || 'mon')}>
+                      {dayObj.label}
+                    </option>
                   {/each}
                 </select>
                 <label for="hour-{folder}">Heure :</label>
-                <input id="hour-{folder}" type="number" min="0" max="23" value={allEdited[folder]?.hour} on:input={(e) => updateEditedHour(folder, parseInt(e.target.value))} class="border rounded px-2 py-1 w-20 transition-all duration-200 hover:scale-[1.02]" />
-                <Form.Button on:click={() => saveSchedule(folder)} disabled={loadingSaveMap[folder]} size="sm" class="w-full sm:w-auto flex items-center gap-2 justify-center transition-all duration-200 hover:scale-[1.02]">
+                <input
+                  id="hour-{folder}"
+                  type="number"
+                  min="0"
+                  max="23"
+                  value={allEdited[folder]?.hour}
+                  on:input={(e) => updateEditedHour(folder, parseInt(e.target.value))}
+                  class="border rounded px-2 py-1 w-20 transition-all duration-200 hover:scale-[1.02]"
+                />
+                <Form.Button
+                  on:click={() => saveSchedule(folder)}
+                  disabled={loadingSaveMap[folder]}
+                  size="sm"
+                  class="w-full sm:w-auto flex items-center gap-2 justify-center transition-all duration-200 hover:scale-[1.02]"
+                >
                   {#if loadingSaveMap[folder]}
                     <Loader2 class="h-4 w-4 animate-spin" />
                     <span class="text-sm">Enregistrement...</span>
@@ -317,7 +468,12 @@ async function runDockerBackup(name: string) {
                 </Form.Button>
               </div>
               <div class="flex flex-col gap-1 items-start">
-                <Form.Button on:click={() => runBackup(folder)} disabled={loadingBackupMap[folder]} size="sm" class="w-full sm:w-auto flex items-center gap-2 justify-center transition-all duration-200 hover:scale-[1.02]">
+                <Form.Button
+                  on:click={() => runBackup(folder)}
+                  disabled={loadingBackupMap[folder]}
+                  size="sm"
+                  class="w-full sm:w-auto flex items-center gap-2 justify-center transition-all duration-200 hover:scale-[1.02]"
+                >
                   {#if loadingBackupMap[folder]}
                     <Loader2 class="h-4 w-4 animate-spin" />
                     <span class="text-sm">Sauvegarde...</span>
@@ -335,8 +491,85 @@ async function runDockerBackup(name: string) {
             {#if allSchedules[folder]}
               <div class="text-sm text-gray-500 mt-2 flex items-center gap-2">
                 <Clock8 class="w-4 h-4 text-gray-400" />
-                Prochaine exécution : {days.find(d => d.code === allSchedules[folder].day)?.label || allSchedules[folder].day} à {allSchedules[folder].hour}h
+                Prochaine exécution : {days.find((d) => d.code === allSchedules[folder].day)?.label || allSchedules[folder].day} à {allSchedules[folder].hour}h
                 <CalendarCheck2 class="w-4 h-4 text-green-500" />
+              </div>
+            {/if}
+
+            {#if showBackups[folder]}
+              <div
+                class="w-full bg-white dark:bg-zinc-800 p-4 rounded-xl shadow border border-gray-200 dark:border-zinc-700 mt-2 transition-all"
+                transition:slide
+              >
+                <div class="flex flex-wrap items-center justify-between gap-2 mb-4">
+                  <h4 class="text-sm font-semibold text-sky-600">🗂️ Restaurer une sauvegarde</h4>
+                  <button
+                    on:click={() => (showBackups[folder] = false)}
+                    class="text-xs text-red-500 hover:text-red-600 transition whitespace-nowrap"
+                  >
+                    ✖ Fermer
+                  </button>
+                </div>
+
+                <div class="flex flex-col sm:flex-row sm:flex-wrap gap-3 w-full items-start sm:items-end">
+                  <select
+                    on:change={(e) => {
+                      dockerSelectedBackup[folder] = e.target.value;
+                      toggleBackups(folder);
+                    }}
+                    class="min-w-[10rem] max-w-full border rounded-lg px-3 py-2 text-sm bg-white dark:bg-zinc-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option disabled selected value="">🗃️ Choisir une sauvegarde</option>
+                    {#each dockerBackups[folder] || [] as file}
+                      <option value={file}>{file}</option>
+                    {/each}
+                  </select>
+
+                  <Form.Button
+                    on:click={() => restoreSymlinkBackup(folder)}
+                    disabled={!dockerSelectedBackup[folder] || restoringSymlinkMap[folder]}
+                    size="sm"
+                    class="w-full sm:w-auto flex items-center justify-center gap-2"
+                  >
+                    {#if restoringSymlinkMap[folder]}
+                      <Loader2 class="w-4 h-4 animate-spin" />
+                      <span class="text-sm">Restauration...</span>
+                    {:else}
+                      <RotateCcw class="w-4 h-4" />
+                      Restaurer
+                    {/if}
+                  </Form.Button>
+                </div>
+
+                {#if progressSymlinkMap[folder] > 0 && progressSymlinkMap[folder] < 100}
+                  <div class="w-full sm:w-40 h-1 bg-gray-200 rounded-full overflow-hidden mt-2">
+                    <div
+                      class="h-full bg-sky-500 transition-all duration-300"
+                      style="width: {progressSymlinkMap[folder]}%"
+                    ></div>
+                  </div>
+                {/if}
+              </div>
+            {:else}
+              <div class="mt-2">
+                <button
+                  on:click={() => {
+                    showBackups[folder] = true;
+                    fetchBackupsFor(folder);
+                  }}
+                    class="inline-flex items-center gap-1 text-sm text-sky-600 hover:text-sky-700 hover:underline transition"
+                  >
+                    <svg
+                      class="w-4 h-4"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-width="2"
+                      viewBox="0 0 24 24"
+                    >
+                      <path d="M12 4v16m8-8H4" />
+                    </svg>
+                    <span class="whitespace-nowrap">Afficher les sauvegardes disponibles</span>
+                </button>
               </div>
             {/if}
           {/if}
@@ -345,7 +578,9 @@ async function runDockerBackup(name: string) {
     </div>
   {:else if $activeTab === 'docker'}
     <div class="space-y-6 w-full m-0" transition:fade>
-      <h2 class="text-xl font-semibold text-sky-600 dark:text-sky-400 mb-4">Planification des Sauvegardes Docker</h2>
+      <h2 class="text-xl font-semibold text-sky-600 dark:text-sky-400 mb-4">
+        Planification des Sauvegardes Docker
+      </h2>
 
       <div class="flex flex-col sm:flex-row gap-4 items-start sm:items-center">
         <label for="container-select" class="font-semibold text-emerald-600 dark:text-emerald-400">Conteneur :</label>
@@ -379,7 +614,12 @@ async function runDockerBackup(name: string) {
               bind:value={$edited.hour}
               class="border rounded px-2 py-1 w-20 transition-all duration-200 hover:scale-[1.02]"
             />
-            <Form.Button on:click={saveDockerSchedule} disabled={$saving} size="sm" class="w-full sm:w-auto flex items-center gap-2 justify-center transition-all duration-200 hover:scale-[1.02]">
+            <Form.Button
+              on:click={saveDockerSchedule}
+              disabled={$saving}
+              size="sm"
+              class="w-full sm:w-auto flex items-center gap-2 justify-center transition-all duration-200 hover:scale-[1.02]"
+            >
               {#if $saving}
                 <Loader2 class="h-4 w-4 animate-spin" />
                 <span class="text-sm">Enregistrement...</span>
@@ -397,13 +637,20 @@ async function runDockerBackup(name: string) {
       <h2 class="text-xl font-semibold text-sky-600 dark:text-sky-400">Conteneurs déjà planifiés</h2>
       {#each Object.keys($dockerSchedules) as name (name)}
         {#if $dockerSchedules[name]}
-          <div class="border p-4 rounded-xl shadow-sm hover:shadow-md transition-shadow duration-200 space-y-4" in:fly={{ y: 20, duration: 300 }} out:fade>
+          <div
+            class="border p-4 rounded-xl shadow-sm hover:shadow-md transition-shadow duration-200 space-y-4"
+            in:fly={{ y: 20, duration: 300 }}
+            out:fade
+          >
             <div class="text-lg font-semibold text-emerald-600 dark:text-emerald-400 flex items-center gap-2 cursor-pointer">
               {name}
               <Dot class="text-green-500" />
             </div>
 
-            <div class="flex flex-col lg:flex-row gap-4 items-start lg:items-center justify-between" transition:slide>
+            <div
+              class="flex flex-col lg:flex-row gap-4 items-start lg:items-center justify-between"
+              transition:slide
+            >
               <div class="flex flex-col sm:flex-row gap-4 items-start sm:items-center">
                 <label for="day-{name}">Jour :</label>
                 <select
@@ -481,9 +728,90 @@ async function runDockerBackup(name: string) {
               </div>
             </div>
 
+            <div class="w-full">
+              {#if showBackups[name]}
+                {#await fetchBackupsFor(name)}
+                  <p class="text-xs text-gray-400 mt-2">Chargement des sauvegardes...</p>
+                {:then _}
+                  <div
+                    class="w-full bg-white dark:bg-zinc-800 p-4 rounded-xl shadow border border-gray-200 dark:border-zinc-700 transition-all mt-4"
+                    transition:slide
+                  >
+                    <div class="flex flex-wrap items-center justify-between gap-2 mb-4">
+                      <h4 class="text-sm font-semibold text-sky-600">🗂️ Restaurer une sauvegarde</h4>
+                      <button
+                        on:click={() => (showBackups[name] = false)}
+                        class="text-xs text-red-500 hover:text-red-600 transition whitespace-nowrap"
+                      >
+                        ✖ Fermer
+                      </button>
+                    </div>
+
+                    <div class="flex flex-col sm:flex-row sm:flex-wrap gap-3 w-full items-start sm:items-end">
+                      <select
+                        on:change={(e) => {
+                          dockerSelectedBackup[name] = e.target.value;
+                          toggleBackups(name);
+                        }}
+                        class="min-w-[10rem] max-w-full border rounded-lg px-3 py-2 text-sm bg-white dark:bg-zinc-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      >
+                        <option disabled selected value="">🗃️ Choisir une sauvegarde</option>
+                        {#each dockerBackups[name] as file}
+                          <option value={file}>{file}</option>
+                        {/each}
+                      </select>
+
+                      <Form.Button
+                        on:click={() => restoreDockerBackup(name)}
+                        disabled={!dockerSelectedBackup[name] || $dockerRestoring[name]}
+                        size="sm"
+                        class="w-full sm:w-auto flex items-center justify-center gap-2"
+                      >
+                        {#if $dockerRestoring[name]}
+                          <Loader2 class="w-4 h-4 animate-spin" />
+                          <span class="text-sm">Restauration...</span>
+                        {:else}
+                          <RotateCcw class="w-4 h-4" />
+                          Restaurer
+                        {/if}
+                      </Form.Button>
+                    </div>
+
+                    {#if dockerProgressMap[name] > 0 && dockerProgressMap[name] < 100}
+                      <div class="w-full sm:w-40 h-1 bg-gray-200 rounded-full overflow-hidden mt-2">
+                        <div
+                          class="h-full bg-sky-500 transition-all duration-300"
+                          style="width: {dockerProgressMap[name]}%"
+                        ></div>
+                      </div>
+                    {/if}
+                  </div>
+                {/await}
+              {:else}
+                <div class="w-full mt-2 flex justify-start">
+                  <button
+                    on:click={() => (showBackups[name] = true)}
+                    class="inline-flex items-center gap-1 text-sm text-sky-600 hover:text-sky-700 hover:underline transition"
+                  >
+                    <svg
+                      class="w-4 h-4"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-width="2"
+                      viewBox="0 0 24 24"
+                    >
+                      <path d="M12 4v16m8-8H4" />
+                    </svg>
+                    <span class="whitespace-nowrap">Afficher les sauvegardes disponibles</span>
+                  </button>
+                </div>
+              {/if}
+            </div>
+
             <div class="text-sm text-gray-500 mt-2 flex items-center gap-2">
               <Clock8 class="w-4 h-4 text-gray-400" />
-              Prochaine exécution : {days.find(d => d.code === $dockerSchedules[name].day)?.label} à {$dockerSchedules[name].hour}h
+              Prochaine exécution : {days.find((d) => d.code === $dockerSchedules[name].day)?.label} à
+              {$dockerSchedules[name].hour}h
               <CalendarCheck2 class="w-4 h-4 text-green-500" />
             </div>
           </div>
@@ -494,7 +822,8 @@ async function runDockerBackup(name: string) {
 </div>
 
 <style>
-  select, input {
+  select,
+  input {
     padding: 4px;
     border-radius: 6px;
     border: 1px solid #ccc;

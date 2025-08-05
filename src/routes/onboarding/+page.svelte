@@ -3,7 +3,7 @@
 	import { animate, stagger } from 'motion';
 	import { onMount } from 'svelte';
 	import { Button } from '$lib/components/ui/button';
-	import { Rocket, Mountain } from 'lucide-svelte';
+	import { Plane, Rocket } from 'lucide-svelte';
 
 	// export let data: PageData;
 
@@ -45,13 +45,13 @@
 >
 	<div class:opacity-0={!inView} class="flex h-full w-full flex-col items-center justify-center">
 		<div class="slide-up flex items-center justify-center">
-			<Mountain class="h-16 w-16" />
+			<Plane class="h-16 w-16" />
 		</div>
 
 		<!-- TODO: REMOVED FOR SOMETIME -->
 		<!-- {#if data.health.message !== true}
 			<div class="flex flex-col items-center justify-center gap-2 slide-up">
-				<h1 class="text-3xl font-semibold text-center">Riven is initializing...</h1>
+				<h1 class="text-3xl font-semibold text-center">SSDv2 is initializing...</h1>
 				<Button class="w-full font-semibold" href="/">Go back to home</Button>
 			</div>
 		{:else} -->
@@ -59,7 +59,7 @@
 		<p
 			class="slide-up max-w-lg text-center text-base text-muted-foreground md:max-w-2xl md:text-lg"
 		>
-			L'installation de SSDv2 est nécessaire pour l'utiliser.
+			Récupération de la configuration du script SSDv2.
 		</p>
 		<Button class="slide-up mt-4 w-full font-medium md:max-w-max" href="/onboarding/1">
 			<Rocket class="mr-2 h-4 w-4" />

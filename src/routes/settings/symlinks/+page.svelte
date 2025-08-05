@@ -712,7 +712,7 @@
                         {:else if $bulkDeleteSuccess}
                             <CheckCircle2 class="w-4 h-4 text-white" /> Supprimés !
                         {:else}
-                            <Trash class="w-4 h-4" /> Supprimer {$allBrokenCount} symlink{s($allBrokenCount)} cassé{s($allBrokenCount)}
+                            <Trash class="w-4 h-4" /> Réparer {$allBrokenCount} symlink{s($allBrokenCount)} cassé{s($allBrokenCount)}
                         {/if}
                     </button>
                 {/if}
@@ -826,7 +826,7 @@
                 {:else if $bulkDeleteSuccess}
                     <CheckCircle2 class="w-4 h-4 text-white" /> Supprimés !
                 {:else}
-                    <Trash class="w-4 h-4" /> Supprimer {$allBrokenCount} symlink{s($allBrokenCount)} cassé{s($allBrokenCount)}
+                    <Trash class="w-4 h-4" /> Réparer {$allBrokenCount} symlink{s($allBrokenCount)} cassé{s($allBrokenCount)}
                 {/if}
             </button>
       {/if}

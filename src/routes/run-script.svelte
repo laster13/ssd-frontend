@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { createEventDispatcher, onMount } from 'svelte';
+	import { createEventDispatcher, onMount, tick } from 'svelte';
 	import { toast } from 'svelte-sonner';
 
 	export let scriptName: string;
@@ -7,14 +7,17 @@
 	export let showLogs: boolean;
 
 	let statusMessage = '';
-	let logs: string[] = [];
-	let backendUrl: string = import.meta.env.VITE_BACKEND_URL; // Valeur par défaut pour SSR
+	let logs: { id: number; text: string }[] = [];
+	let logId = 0;
+	let logsBox: HTMLPreElement;
+	let backendUrl: string = import.meta.env.VITE_BACKEND_URL;
 
 	const dispatch = createEventDispatcher();
 
 	function runScript() {
 		console.log('Lancement du script:', scriptName, label ? `avec label: ${label}` : "sans label");
 		logs = [];
+		logId = 0;
 
 		dispatch('buttonStateChange', { isSubmitting: true, showSpinner: true });
 
@@ -26,11 +29,14 @@
 
 		const eventSource = new EventSource(url);
 
-		eventSource.onmessage = (event) => {
+		eventSource.onmessage = async (event) => {
 			console.log("Log reçu : ", event.data);
-			logs = [event.data, ...logs].slice(0, 20);
+			logs = [...logs, { id: ++logId, text: event.data }].slice(-200);
 			statusMessage = "En cours de traitement......";
 			dispatch('statusMessageUpdate', { statusMessage });
+
+			await tick();
+			logsBox.scrollTop = logsBox.scrollHeight;
 		};
 
 		eventSource.onerror = (error) => {
@@ -53,7 +59,6 @@
 	}
 
 	onMount(() => {
-		// ✅ Détection du protocole uniquement côté client
 		if (typeof window !== 'undefined') {
 			backendUrl = window.location.protocol === 'https:'
 				? import.meta.env.VITE_BACKEND_URL_HTTPS
@@ -63,7 +68,6 @@
 				console.log('Événement startScript capté avec:', event.detail.scriptName);
 				scriptName = event.detail.scriptName;
 				label = event.detail.label || null;
-				console.log('Valeur de selectedItem.label captée dans RunScript:', label);
 				if (scriptName) {
 					runScript();
 				}
@@ -73,5 +77,54 @@
 </script>
 
 {#if showLogs}
-<pre class="text-xs">{logs.join("\n")}</pre>
+<pre class="logs-terminal" bind:this={logsBox}>
+	{#each logs as log (log.id)}
+		<div class="log-line">{log.text}</div>
+	{/each}
+</pre>
 {/if}
+
+<style>
+	.logs-terminal {
+		background: transparent;
+		padding: 1rem;
+		max-height: 50vh;
+		overflow-y: auto;
+		font-family: 'Courier New', monospace;
+		font-size: 0.85rem;
+		color: #00d3ff;
+		text-shadow: 0 0 3px #00d3ff;
+		line-height: 1.4;
+		display: flex;
+		flex-direction: column;
+		justify-content: flex-end;
+		width: 100%;
+		box-sizing: border-box;
+	}
+
+	@media (prefers-color-scheme: light) {
+		.logs-terminal {
+			color: #009fc9;
+			text-shadow: none;
+		}
+	}
+
+	.log-line {
+		opacity: 0;
+		animation: slideIn 0.45s ease forwards;
+		white-space: pre-wrap;
+		word-break: break-word;
+		font-weight: normal;
+	}
+
+	@keyframes slideIn {
+		0% {
+			opacity: 0;
+			transform: translateY(15px);
+		}
+		100% {
+			opacity: 1;
+			transform: translateY(0);
+		}
+	}
+</style>
