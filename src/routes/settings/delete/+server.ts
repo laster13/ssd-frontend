@@ -5,9 +5,9 @@ import os from 'os';
 const userName = os.userInfo().username;
 
 // Chemins des fichiers
-const settingsFilePath = `/home/${userName}/projet-ssd/ssd-frontend/static/settings.json`;
-const localSettingsFilePath = `/home/${userName}/projet-ssd/ssd-backend/data/settings.json`;
-const servicesFilePath = `/home/${userName}/projet-ssd/ssd-frontend/static/services.json`;
+const settingsFilePath = `/home/${userName}/seedbox/docker/${userName}/projet-ssd/ssd-frontend/static/settings.json`;
+const localSettingsFilePath = `/home/${userName}/seedbox/docker/${userName}/projet-ssd/ssd-backend/data/settings.json`;
+const servicesFilePath = `/home/${userName}/seedbox/docker/${userName}/projet-ssd/ssd-frontend/static/services.json`;
 const sourceFilePath = `/home/${userName}/seedbox-compose/includes/config/services-available`;
 
 // Fonction pour générer les items à partir de la source
