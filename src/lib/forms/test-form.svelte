@@ -1,27 +1,16 @@
 <script lang="ts">
-  import { page } from '$app/stores';
   import { onMount } from 'svelte';
-  import { type SuperValidated, type Infer, superForm } from 'sveltekit-superforms';
   import * as Form from '$lib/components/ui/form';
-  import { mediaServerSettingsSchema, type MediaServerSettingsSchema } from '$lib/forms/helpers';
   import { toast } from 'svelte-sonner';
   import { Separator } from '$lib/components/ui/separator';
   import { Loader2, CheckCircle2, XCircle } from 'lucide-svelte';
-  import RunScript from '../../routes/run-script.svelte';
   import { goto } from '$app/navigation';
   import { browser } from '$app/environment';
   import { fade } from 'svelte/transition';
   import { api } from '$lib/api'
 
-  export let data: SuperValidated<Infer<MediaServerSettingsSchema>>;
-  export let actionUrl: string = '?/default';
-  export let scriptName: string = 'requis';
-
   let fileExists: boolean | null = null;
   let backendUrl: string | undefined;
-
-  const form = superForm(data, { dataType: 'json' });
-  const { form: formData, enhance } = form;
 
   let isSubmitting = false;
   let showSpinner = false;
@@ -38,12 +27,7 @@
 
   onMount(() => {
     if (!browser) return;
-
-    // Génère un paramètre unique pour contourner le cache
-    const uniqueParam = new Date().getTime();
-
-    // Appelle directement le backend avec ce param
-    checkFileStatus(uniqueParam);
+    checkFileStatus();
   });
 
   async function checkFileStatus() {
@@ -65,7 +49,7 @@
 
     try {
       if (fileExists) {
-        const response = await api.post('/scripts/update-config'); // ✅ remplacé
+        const response = await api.post('/scripts/update-config');
 
         if (response.status === 200) {
           toast.success('Configuration mise à jour avec succès');
@@ -75,12 +59,8 @@
           throw new Error('Erreur lors de la mise à jour');
         }
       } else {
-        toast.success('Script déclenché: ' + scriptName);
-        if (browser) {
-          const scriptEvent = new CustomEvent('startScript', { detail: { scriptName } });
-          window.dispatchEvent(scriptEvent);
-        }
-        statusMessage = "Script déclenché sans SSD.";
+        toast.error("SSDv2 n'est pas installé");
+        statusMessage = "Impossible de synchroniser.";
       }
     } catch (error) {
       console.error('Erreur lors de la soumission:', error);
@@ -94,25 +74,8 @@
     }
   }
 
-  function updateButtonState(event: CustomEvent) {
-    const { isSubmitting: submitting, showSpinner: spinner } = event.detail;
-    isSubmitting = submitting;
-    showSpinner = spinner;
-  }
-
-  function updateStatusMessage(event: CustomEvent) {
-    statusMessage = event.detail.statusMessage;
-  }
-
-  function handleCheckboxChange(event: Event) {
-    showLogs = (event.target as HTMLInputElement).checked;
-  }
-
   function handleScriptCompleted() {
-    const currentPath = $page.url.pathname;
-    if (currentPath === '/onboarding/1') {
-      setTimeout(() => goto('/onboarding/2'), 100);
-    }
+    setTimeout(() => goto('/onboarding/3'), 100);
   }
 </script>
 
@@ -120,9 +83,6 @@
 <div class="w-full max-w-xl mx-auto">
   <div class="p-[2px] rounded-4xl bg-gradient-to-r from-amber-400/40 via-orange-500/40 to-pink-500/40 shadow-[0_8px_60px_-10px_rgba(251,191,36,0.3)]">
     <form 
-      method="POST" 
-      action={actionUrl} 
-      use:enhance 
       class="flex flex-col gap-8 p-6 sm:p-10 rounded-4xl 
              bg-white/80 dark:bg-gray-900/80 
              backdrop-blur-3xl border border-white/10 shadow-2xl"
@@ -200,12 +160,3 @@
     </form>
   </div>
 </div>
-
-<!-- RunScript -->
-<RunScript 
-  {scriptName} 
-  {showLogs} 
-  on:buttonStateChange={updateButtonState} 
-  on:statusMessageUpdate={updateStatusMessage}
-  on:scriptCompleted={handleScriptCompleted}
-/>
