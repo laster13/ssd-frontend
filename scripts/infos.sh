@@ -4,7 +4,7 @@
   get_architecture
 
   # Chemin vers le fichier JSON
-  json_file="/home/${USER}/projet-ssd/ssd-backend/data/settings.json"
+  json_file="/home/${USER}/seedbox/docker/${USER}/projet-ssd/ssd-backend/data/settings.json"
 
   # Vérifie si le fichier existe
   if [ ! -f "$json_file" ]; then
@@ -13,7 +13,6 @@
   fi
 
   # Extraire les valeurs du fichier JSON et les assigner à des variables avec jq
-  realdebrid=$(jq -r '.downloaders.real_debrid.api_key' "$json_file")
   username=$(jq -r '.utilisateur.username' "$json_file")
   email=$(jq -r '.utilisateur.email' "$json_file")
   domain=$(jq -r '.utilisateur.domain' "$json_file")
@@ -25,11 +24,8 @@
   oauth_client=$(jq -r '.utilisateur.oauth_client' "$json_file")
   oauth_secret=$(jq -r '.utilisateur.oauth_secret' "$json_file")
   oauth_mail=$(jq -r '.utilisateur.oauth_mail' "$json_file")
-  zurg_enabled=$(jq -r '.utilisateur.zurg_enabled' "$json_file")
-  zurg_token=$(jq -r '.utilisateur.zurg_token' "$json_file")
 
   # Mise à jour fichier all.yml avec les données
-  manage_account_yml zurg.token "$realdebrid"
   manage_account_yml user.name "$username"
   manage_account_yml user.mail "$email"
   manage_account_yml user.domain "$domain"
@@ -58,18 +54,6 @@
 
   ansible-playbook $HOME/seedbox-compose/includes/dockerapps/templates/traefik/run-oauth.yml
 
-  fi
-  
-  # zurg
-  if [[ "$zurg_enabled" == true && -n "$zurg_token" ]]; then
-    # Lancer le script si les conditions sont remplies
-    manage_account_yml zurg.sponsor "$zurg_token"
-    $HOME/projet-ssd/ssd-frontend/scripts/zurg.sh
-  elif [[ "$zurg_enabled" == false ]]; then
-    # Ne rien faire si zurg_enabled est false
-    echo "zurg_enabled est désactivé. Aucune action effectuée."
-  else
-    $HOME/projet-ssd/ssd-frontend/scripts/zurg_public.sh
   fi
 
   # creation utilisateur
