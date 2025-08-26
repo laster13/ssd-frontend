@@ -3,7 +3,7 @@
 source /home/${USER}/seedbox-compose/profile.sh
 
 # Chemins et variables
-json_file="${HOME}/projet-ssd/ssd-backend/data/settings.json"
+json_file="${HOME}/seedbox/docker/${USER}/projet-ssd/ssd-backend/data/settings.json"
 line=$1
 
 # Fonction pour extraire les informations de domaine et d'authentification
