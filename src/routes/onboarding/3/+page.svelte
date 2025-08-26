@@ -7,17 +7,22 @@
 	import { Progress } from '$lib/components/ui/progress';
 
 	const formProgress = getContext<Writable<number>>('formProgress');
-	formProgress.set(4,5);
+	formProgress.set(1);
 
 	export let data: PageData;
 </script>
 
 <div class="flex h-full w-full flex-col items-center overflow-x-hidden p-8 py-32 md:px-24 lg:px-32">
-	<div class="flex w-full max-w-6xl flex-col items-start">
-		<Progress class="mb-2 w-full" max={6} value={$formProgress} />
-		<h1 class="mb-2 text-2xl font-bold md:text-3xl lg:text-4xl">Step 3/4</h1>
-		<p class="text-base md:text-lg">Configuration Medias Servers.</p>
-	</div>
+        <div class="flex w-full max-w-6xl flex-col items-start">
+          <Progress class="mb-2 w-full" max={6} value={$formProgress} />
+        
+          <!-- h1 avec le même dégradé que Étape 5/5 -->
+          <h1 class="mb-2 text-2xl font-bold md:text-3xl lg:text-4xl bg-gradient-to-r from-indigo-400 via-purple-400 to-pink-500 bg-clip-text text-transparent">
+              Step 2/4
+          </h1>
+        
+          <p class="text-base md:text-lg">Configuration Medias Servers.</p>
+        </div>
 	<div class="mt-4 flex w-full max-w-6xl flex-col">
 		<Separator class="mb-8" />
 		<MediaServerForm data={data.form} actionUrl="/settings/mediaserver?onboarding=true" />

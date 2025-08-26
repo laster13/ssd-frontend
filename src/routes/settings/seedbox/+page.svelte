@@ -1,15 +1,19 @@
 <script lang="ts">
-	import type { PageData } from './$types';
-	import SeedboxForm from '$lib/forms/seedbox-form.svelte';
+  import type { PageData } from './$types';
+  import ApplicationsForm from '$lib/forms/seedbox-form.svelte';
 
-	export let data: PageData;
+  export let data: PageData;
 </script>
 
-<div class="flex flex-col">
-	<h2 class="text-xl font-medium md:text-2xl">Paramètres généraux</h2>
-	<p class="text-sm text-muted-foreground md:text-base">
-		Configuration du compte.
-	</p>
+<div class="flex flex-col p-6 space-y-4">
+  <!-- Titre -->
+  <h2 class="text-2xl md:text-3xl font-normal text-center mb-6">
+    ⚙️ <span class="text-transparent bg-clip-text 
+                 bg-gradient-to-r from-red-600 via-orange-500 via-yellow-400 to-green-500">
+      Informations Personelles
+    </span>
+  </h2>
 
-	<SeedboxForm data={data.form} actionUrl="/settings/seedbox" />
+  <!-- Formulaire -->
+  <ApplicationsForm data={data.form} actionUrl="/settings/seedbox" />
 </div>

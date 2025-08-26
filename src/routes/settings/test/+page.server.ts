@@ -1,77 +1,61 @@
 import type { PageServerLoad, Actions } from './$types';
 import { superValidate, message } from 'sveltekit-superforms';
-import { fail, error } from '@sveltejs/kit';
+import { zod } from 'sveltekit-superforms/adapters';
+import { fail, error, redirect } from '@sveltejs/kit';
+import {
+    seedboxSettingsSchema,
+    seedboxSettingsToGet,
+    seedboxSettingsToPass,
+    seedboxSettingsToSet
+} from '$lib/forms/helpers';
 import { setSettings, saveSettings, loadSettings } from '$lib/forms/helpers.server';
+import { SettingsService } from '$lib/client';
 
-export const load: PageServerLoad = async ({ fetch, locals }) => {
-	console.log("Début du chargement des paramètres partiels...");
+export const load: PageServerLoad = async () => {
+    try {
+        const { data } = await SettingsService.getSettings({
+            path: {
+                paths: seedboxSettingsToGet.join(',')
+            }
+        });
+        const toPassToSchema = seedboxSettingsToPass(data);
+        console.log('Données après passage dans seedboxSettingsToPass:', toPassToSchema);
 
-	// Fonction pour obtenir les paramètres directement, utilisant `locals` et `fetch` disponibles
-	async function getPartialSettings() {
-		try {
-			const results = await fetch(`${locals.backendUrl}/api/v1/settings/get/all`);
-			console.log('Réponse obtenue depuis le backend:', results);
-			return await results.json();
-		} catch (e) {
-			console.error('Erreur lors de la récupération des paramètres:', e);
-			throw error(503, 'Unable to fetch settings data. API is down.');
-		}
-	}
+	const scriptName = 'infos'; 
 
-	// Récupérer les données depuis l'API sans transformation
-	const data: any = await getPartialSettings();
-	console.log('Données reçues pour le formulaire :', data);
-
-	const scriptName = 'requis'; 
-
-	return {
-		form: data, // On passe directement les données récupérées sans transformation
-		scriptName
-	};
+        return {
+            form: await superValidate(toPassToSchema, zod(seedboxSettingsSchema)),
+            scriptName: 'infos'  // Ajout de scriptName comme dans l'ancien fichier
+        };
+    } catch (e) {
+        console.error(e);
+        throw error(503, 'Unable to fetch settings data. API is down.');
+    }
 };
 
 export const actions: Actions = {
     default: async (event) => {
-        console.log("Début de l'action par défaut...");
+        const form = await superValidate(event, zod(seedboxSettingsSchema));
+        console.log('Formulaire validé par superValidate:', form);
 
-        const formData = await event.request.formData();
-        const formObject = Object.fromEntries(formData);
-
-        try {
-            // Utilisation de la fonction de validation personnalisée
-            const { valid, errors } = validateForm(formObject); // Attention à la fonction potentiellement manquante
-            console.log("Formulaire validé :", { valid, errors });
-
-            if (!valid) {
-                console.log('Formulaire non valide:', errors);
-                return fail(400, { form: formObject, errors });
-            }
-        } catch (error) {
-            // Si c'est un ReferenceError lié à validateForm, on l'ignore
-            if (error instanceof ReferenceError && error.message.includes('validateForm')) {
-                console.log('Erreur validateForm ignorée.');
-                return; // On arrête ici sans renvoyer d'erreur
-            }
-
-            // Sinon, on affiche l'erreur comme d'habitude
-            console.error('Erreur lors de la validation du formulaire:', error);
-            return fail(500, { error: 'Erreur lors de la validation.' });
+        if (!form.valid) {
+            console.log('form not valid');
+            return fail(400, {
+                form
+            });
         }
+        const toSet = seedboxSettingsToSet(form);
 
-        // On envoie directement les données du formulaire au backend
         try {
-            const data = await setSettings(event.fetch, formObject);
-            console.log('Réponse du backend après la mise à jour des paramètres:', data);
-
-            if (!data.data.success) {
-                console.log('Échec lors de l\'initialisation des services:', data);
-                return message(formObject, `Service(s) failed to initialize. Please check your settings.`, { status: 400 });
+            const data = await setSettings(toSet);
+            if (!data) {
+                return message(form, 'Service(s) failed to initialize. Please check your settings.', {
+                    status: 400
+                });
             }
 
-            await saveSettings(event.fetch);
-            await loadSettings(event.fetch);
-            console.log('Paramètres sauvegardés et chargés avec succès');
-
+            const _save = await saveSettings();
+            const _load = await loadSettings();
         } catch (e) {
             console.error(e);
             return message(form, 'Unable to save settings. API is down.', {
@@ -79,9 +63,10 @@ export const actions: Actions = {
             });
         }
 
-        if (event.url.searchParams.get('onboarding') === 'true') {
-            throw redirect(302, '/onboarding/2');
-        }
+
+	if (event.url.searchParams.get('onboarding') === 'true') {
+           redirect(302, '/onboarding/4');
+	}
 
         return message(form, 'Settings saved!');
     }

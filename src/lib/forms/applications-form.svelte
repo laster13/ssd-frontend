@@ -1,7 +1,7 @@
 <script lang="ts">
   import { slide } from 'svelte/transition';
   import { page } from '$app/stores';
-  import { getContext, onMount } from 'svelte';
+  import { getContext, onMount, onDestroy } from 'svelte';
   import SuperDebug from 'sveltekit-superforms';
   import { zodClient } from 'sveltekit-superforms/adapters';
   import { type SuperValidated, type Infer, superForm } from 'sveltekit-superforms';
@@ -19,17 +19,25 @@
   import { Input } from '$lib/components/ui/input';
   import { goto } from '$app/navigation';
   import { writable } from 'svelte/store';
-  import { Radio } from 'flowbite-svelte';
-  import { Button } from '$lib/components/ui/button';
   import RunScript from '../../routes/run-script.svelte'; 
   import { browser } from '$app/environment';
+  import Portal from 'svelte-portal';
+  import { computePosition, offset, flip, shift, autoUpdate } from '@floating-ui/dom';
 
+  // ---------------------------
+  // Props
+  // ---------------------------
   export let data: SuperValidated<Infer<ApplicationsSettingsSchema>>;
   export let actionUrl: string = '?/default';
   export let scriptName: string = 'appli';
 
+  // ---------------------------
+  // State variables
+  // ---------------------------
   let applications = [];
   let domaine = {};
+  type Item = { id: number; label: string };
+
   let selectedItem: Item | null = null;
   let selectedApplication = '';
 
@@ -37,13 +45,91 @@
   let showSpinner = false;
   let statusMessage = '';
   let showLogs = false;
-  let selectedAuth = "";
 
+  // ---------------------------
+  // SSR / Client guards
+  // ---------------------------
+  let isClient = false;
+  let screenWidth = 1024; // valeur par défaut safe pour SSR
+
+  let triggerEl: HTMLElement;
+  let listEl: HTMLElement;
+  let cleanup: (() => void) | null = null;
+
+  // ---------------------------
+  // Authentification (segmented control)
+  // ---------------------------
+  // Options disponibles
+  const options = [
+    { value: "basique", label: "Basique" },
+    { value: "oauth", label: "OAuth" },
+    { value: "authelia", label: "Authelia" },
+    { value: "aucune", label: "Aucune" }
+  ];
+
+  let activeIndex = 0;
+
+  function selectOption(opt, idx) {
+    activeIndex = idx;
+    formData.update(data => {
+      data.authentification = { authappli: opt.value };
+      return data;
+    });
+  }
+
+  onMount(() => {
+    isClient = true;
+
+    const currentApp = selectedItem?.label || "traefik";
+    const current = $formData.authentification?.[currentApp]?.toLowerCase?.();
+
+    const idx = options.findIndex(o => o.value === current);
+    activeIndex = idx >= 0 ? idx : 0;
+
+    formData.update(data => {
+      if (!data.authentification) data.authentification = {};
+      if (!data.authentification[currentApp]) {
+        data.authentification[currentApp] = options[activeIndex].value;
+      }
+      return data;
+    });
+
+    fetchServices();
+    fetchApplications();
+  });
+
+  function initFloating() {
+    if (!triggerEl || !listEl) return;
+
+    cleanup?.();
+    cleanup = autoUpdate(triggerEl, listEl, () => {
+      computePosition(triggerEl, listEl, {
+        middleware: [offset(8), flip(), shift({ padding: 8 })],
+        placement: 'bottom-start'
+      }).then(({ x, y }) => {
+        Object.assign(listEl.style, {
+          left: `${x}px`,
+          top: `${y}px`
+        });
+      });
+    });
+  }
+
+  onDestroy(() => cleanup?.());
+
+  $: if (isClient && state?.isOpened && listEl) {
+    initFloating();
+  }
+
+  // ---------------------------
+  // Form
+  // ---------------------------
   const formDebug: boolean = getContext('formDebug');
 
   const form = superForm(data, {
     validators: zodClient(applicationsSettingsSchema),
     dataType: "json",
+    taintedMessage: false 
   });
 
   const { form: formData, enhance, message, delayed } = form;
@@ -51,36 +137,19 @@
   let input: HTMLInputElement | null = null;
   let items: { [itemId: string]: HTMLElement } = {};
 
-  type Item = { id: number; label: string };
-
   formData.domaine = typeof formData.domaine === 'object' && !Array.isArray(formData.domaine) ? formData.domaine : {};
 
-  onMount(() => {
-    formData.update(data => {
-      data.authentification.authappli = "basique";
-      return data;
-    });
-
-    if (browser) {
-      const uniqueParam = new Date().getTime();
-      const currentUrl = window.location.href;
-      if (!currentUrl.includes('nocache')) {
-        window.location.href = `${currentUrl}?nocache=${uniqueParam}`;
-      }
-    }
-
-    fetchServices();
-    fetchApplications();
-  });
-
+  // ---------------------------
+  // Fetch & Combobox
+  // ---------------------------
   async function fetchServices() {
     try {
-      const response = await fetch('/settings/services.json');
+      const response = await fetch(`/settings/services.json?nocache=${Date.now()}`);
       if (!response.ok) throw new Error('Failed to load');
       const jsonData = await response.json();
       fruits = jsonData.items || [{ id: 0, label: 'No items available' }];
       initializeCombobox();
-    } catch (error) {
+    } catch {
       fruits = [{ id: 0, label: 'No items available' }];
       initializeCombobox();
     }
@@ -88,7 +157,7 @@
 
   async function fetchApplications() {
     try {
-      const response = await fetch('/settings.json');
+      const response = await fetch(`/settings.json?nocache=${Date.now()}`);
       if (!response.ok) throw new Error('Failed to load');
       const jsonData = await response.json();
       applications = jsonData.applications || [];
@@ -132,9 +201,6 @@
     });
 
     Combobox.handleEvents(output, {
-      onInputValueChanged() {
-        // Optionnel
-      },
       onSelectedItemsChanged() {
         selectedItem = model.selectedItems[0] || null;
       },
@@ -154,16 +220,20 @@
   }
 
   function resetForm() {
-    formData.update(() => ({
+    formData.update((data) => ({
+      ...data,
       dossiers_on_item_type: [],
-      authentification: { authappli: "basique" },
+      // 👉 on garde la valeur existante, pas de forçage en "basique"
+      authentification: { authappli: data.authentification?.authappli ?? "basique" },
       domaine: {},
     }));
     resetCombobox();
   }
 
+
   function handleSubmit(event: Event) {
     event.preventDefault();
+
     formData.update((data) => {
       if (typeof data.domaine === 'string') {
         try {
@@ -172,30 +242,35 @@
           data.domaine = {};
         }
       }
+
       handleFormSuccess();
+
       return {
         ...data,
         dossiers_on_item_type: [],
-        authentification: { authappli: "basique" },
+        // 👉 on respecte la valeur choisie (aucune, basique, oauth, authelia)
+        authentification: { authappli: data.authentification?.authappli ?? "basique" },
         domaine: {}
       };
     });
-    (event.target as HTMLFormElement).reset();
   }
 
   function handleFormSuccess() {
-    toast.success('Script déclenché: ' + scriptName);
     const label = selectedItem?.label;
     if (!label) {
       toast.error("Aucune application sélectionnée. Veuillez sélectionner une application.");
       return;
     }
-    if (browser) {
-      const scriptEvent = new CustomEvent('startScript', {
-        detail: { scriptName, label }
-      });
-      window.dispatchEvent(scriptEvent);
-    }
+
+    // ⏱ tempo seulement pour l’event script
+    setTimeout(() => {
+      if (browser) {
+        const scriptEvent = new CustomEvent("startScript", {
+          detail: { scriptName, label }
+        });
+        window.dispatchEvent(scriptEvent);
+      }
+    }, 1000); // ajuste entre 100–500ms pour test
   }
 
   function updateButtonState(event: CustomEvent) {
@@ -213,449 +288,428 @@
   }
 </script>
 
-<!-- Le reste du HTML est inchangé (reprendre exactement ce que tu avais) --><style>
-/* Conteneur principal pour le label et la combobox */
-.combobox-container {
-    display: flex;
-    align-items: center;
-}
-
-/* Conteneur du label "Applications" */
-.label-container {
-    margin-right: 120px;
-}
-
-/* Ajustement de la largeur de la combobox */
-.combobox-wrapper {
-    flex-grow: 0;
-}
-
-.label-text {
-    margin: 0;
-    font-size: 1rem;
-}
-
-/* Styles existants pour la combobox */
-.container {
-    width: 100%;
-    max-width: 200px;
-}
-
-@keyframes blink {
-    0% { opacity: 1; }
-    50% { opacity: 0.5; }
-    100% { opacity: 1; }
-}
-
-.blinking-message {
-    animation: blink 1.5s linear infinite;
-}
-
-.input-container {
-    position: relative;
-}
-
-.label {
-    display: block;
-    margin-bottom: 0.5rem;
-}
-
-.input {
-    padding: 0.25rem;
-    border: 1px solid #ddd;
-    border-radius: 6px;
-    font-size: 0.875rem;
-    box-sizing: border-box;
-    background-color: #ffffff;
-    outline: none;
-}
-
-.input:focus {
-    border-color: #bbb;
-}
-
-.suggestions {
-    color: #333;
-    position: absolute;
-    top: 100%;
-    left: 0;
-    right: 0;
-    z-index: 1;
-    max-height: 150px;
-    overflow-y: auto;
-    border: 1px solid #ddd;
-    background-color: #ffffff;
-    margin: 0;
-    padding: 0;
-    list-style: none;
-}
-
-.option {
-    padding: 0.25rem;
-    cursor: pointer;
-}
-
-.highlighted {
-    background-color: #f0f0f0;
-}
-
-.selected {
-    background-color: #e0e0e0;
-    color: #333;
-}
-
-.selected-and-highlighted {
-    background-color: #d0d0d0;
-}
-
-.hide {
-    display: none;
-}
-
-.selected-result {
-    margin-top: 0.5rem;
-    font-size: 0.875rem;
-}
-</style>
-
 <!-- Formulaire pour la combobox -->
 <form method="POST" action={actionUrl} use:enhance class="my-8 flex flex-col gap-2" on:submit={handleSubmit}>
 
-<div class="flex flex-col items-start">
-    <div class="flex items-center">
-        <label style="font-size: 14px" for="showLogs" class="flex items-center">Afficher les logs</label>
-        <input type="checkbox" bind:checked={showLogs} class="ml-9" id="showLogs" style="width: 16px; height: 16px; margin-left: 110px; border: 0.5px solid #000; background-color: transparent;" />
+<!-- Bloc Logs -->
+<div
+  class="card stack cursor-pointer select-none
+         bg-gradient-to-br from-white to-gray-50 dark:from-gray-900 dark:to-gray-800
+         border border-gray-200 dark:border-gray-700 
+         shadow-sm rounded-2xl p-5 mb-6
+         transition hover:shadow-md"
+  role="button"
+  tabindex="0"
+  aria-pressed={showLogs}
+  on:click={() => showLogs = !showLogs}
+  on:keydown={(e) => (e.key === 'Enter' || e.key === ' ') && (showLogs = !showLogs)}
+>
+  <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+    <!-- Icône + Label + Description -->
+    <div class="flex items-start gap-3">
+      <div
+        class="flex items-center justify-center w-9 h-9 rounded-xl 
+               bg-amber-100 text-amber-600 dark:bg-amber-500/20 dark:text-amber-400"
+      >
+        📝
+      </div>
+      <div>
+        <h3 class="text-base font-semibold text-gray-800 dark:text-gray-100 whitespace-nowrap">
+          Afficher les logs
+        </h3>
+        <p class="text-sm text-gray-500 dark:text-gray-400">
+          Logs en temps réel
+        </p>
+      </div>
     </div>
-    <p class="text-gray-500 text-sm mt-1">Logs en temps réel</p>
+
+    <!-- ✅ Toggle indépendant -->
+    <div class="relative inline-flex items-center">
+      <input
+        type="checkbox"
+        id="showLogs"
+        bind:checked={showLogs}
+        class="sr-only peer"
+      />
+      <div
+        class="w-11 h-6 
+               bg-amber-100 dark:bg-amber-900/30
+               rounded-full peer 
+               peer-focus:outline-none peer-focus:ring-2 
+               peer-focus:ring-amber-400 dark:peer-focus:ring-amber-500 
+               peer-checked:bg-amber-500 
+               transition-colors duration-300"
+      ></div>
+      <span
+        class="absolute left-1 top-1 w-4 h-4 bg-white rounded-full 
+               transition-transform duration-300 peer-checked:translate-x-5 shadow"
+      ></span>
+    </div>
+  </div>
 </div>
 
 {#if !showLogs}
 
-
-<div style="display: flex; flex-direction: column; gap: 10px; width: 100%;">
-    <!-- Conteneur principal -->
-    <div style="display: flex; align-items: center; flex-wrap: wrap; gap: 20px; width: 100%;">
-        <!-- Label aligné à gauche -->
-        <label 
-            class="text-sm" 
-            for="authappli-basique" 
-            style="flex-shrink: 0; margin-right: 90px;"
-        >
-            Authentification
-        </label>
-
-        <!-- Conteneur des boutons radio -->
-        <div style="display: flex; flex-wrap: wrap; gap: 15px;">
-            <!-- Basique -->
-            <label 
-                class="flex items-center gap-2 text-sm" 
-                for="authappli-basique" 
-                style="display: flex; align-items: center; gap: 5px;"
-            >
-                <input 
-                    id="authappli-basique"
-                    name="authappli" 
-                    type="radio" 
-                    bind:group={$formData.authentification.authappli} 
-                    value="basique" 
-                    class="appearance-none border-2 border-teal-400 rounded-full checked:bg-teal-400 checked:border-teal-400 w-4 h-4" 
-                />
-                <span>Basique</span>
-            </label>
-
-            <!-- Oauth -->
-            <label 
-                class="flex items-center gap-2 text-sm" 
-                for="authappli-oauth" 
-                style="display: flex; align-items: center; gap: 5px;"
-            >
-                <input 
-                    id="authappli-oauth"
-                    name="authappli" 
-                    type="radio" 
-                    bind:group={$formData.authentification.authappli} 
-                    value="oauth" 
-                    class="appearance-none border-2 border-teal-400 rounded-full checked:bg-teal-400 checked:border-teal-400 w-4 h-4" 
-                />
-                <span>Oauth</span>
-            </label>
-
-            <!-- Authelia -->
-            <label 
-                class="flex items-center gap-2 text-sm" 
-                for="authappli-authelia" 
-                style="display: flex; align-items: center; gap: 5px;"
-            >
-                <input 
-                    id="authappli-authelia"
-                    name="authappli" 
-                    type="radio" 
-                    bind:group={$formData.authentification.authappli} 
-                    value="authelia" 
-                    class="appearance-none border-2 border-teal-400 rounded-full checked:bg-teal-400 checked:border-teal-400 w-4 h-4" 
-                />
-                <span>Authelia</span>
-            </label>
-
-            <!-- Aucune -->
-            <label 
-                class="flex items-center gap-2 text-sm" 
-                for="authappli-aucune" 
-                style="display: flex; align-items: center; gap: 5px;"
-            >
-                <input 
-                    id="authappli-aucune"
-                    name="authappli" 
-                    type="radio" 
-                    bind:group={$formData.authentification.authappli} 
-                    value="aucune" 
-                    class="appearance-none border-2 border-teal-400 rounded-full checked:bg-teal-400 checked:border-teal-400 w-4 h-4" 
-                />
-                <span>Aucune</span>
-            </label>
-        </div>
-    </div>
-</div>
-<div style="height: 10px;"></div>
-
-<div 
-    class="combobox-container" 
-    style="display: flex; flex-direction: column; gap: 8px; align-items: flex-start; width: 100%;"
+<!-- Bloc Authentification -->
+<div
+  class="card stack 
+         bg-gradient-to-br from-white to-gray-50 dark:from-gray-900 dark:to-gray-800
+         border border-gray-200 dark:border-gray-700 
+         shadow-md hover:shadow-lg transition-shadow
+         rounded-2xl p-6 mb-6"
 >
-    <!-- Wrapper du label et du champ d'entrée -->
-    <div 
-        class="combobox-wrapper" 
-        style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap; width: 100%;"
-    >
-        <!-- Label aligné à gauche -->
-        <div 
-            class="label-container" 
-            style="flex-shrink: 0; white-space: nowrap;"
-        >
-            <p 
-                class="text-sm" 
-                style="margin: 0;"
-            >
-                Applications
-            </p>
-        </div>
-
-        <!-- Champ d'entrée -->
-        <div 
-            class="input-container" 
-            style="position: relative; display: flex; align-items: center; flex-grow: 1; min-width: 200px; max-width: 100%;"
-        >
-            <input 
-                {...state?.aria.input}
-                class="input"
-                value={state?.inputValue || ""}
-                placeholder="Choisir Application"
-                bind:this={input}
-                on:input={(event) => dispatch({ type: "inputted-value", inputValue: event.currentTarget.value })}
-                on:focus={() => dispatch({ type: "focused-input" })}
-                on:blur={() => dispatch({ type: "blurred-input" })}
-                on:mousedown={() => dispatch({ type: "pressed-input" })}
-                on:keydown={onKeydown}
-                style="width: 300px; height: 37px; padding: 6px; background-color: transparent; border: 1px solid #ccc; border-radius: 4px; margin-left: 2px;"
-            />
-
-            <!-- Liste déroulante alignée sous le champ -->
-            <ul 
-                {...state?.aria.itemList} 
-                class="suggestions" 
-                class:hide={!state?.isOpened} 
-                style="margin: 0; padding: 0; list-style: none; border: 1px solid #ccc; border-radius: 4px; max-height: 200px; overflow-y: auto; width: 300px; position: absolute; top: calc(100% + 4px); left: 0; background: #fff; z-index: 10;"
-            >
-                {#if state?.renderItems.length === 0}
-                    <li style="padding: 8px; text-align: center;">No results</li>
-                {/if}
-                {#each state?.renderItems as item, index}
-                    <div
-                        {...item.aria}
-                        role="option"
-                        tabindex="0"
-                        aria-selected={item.status === "selected"}
-                        on:mousemove={() => dispatch({ type: "hovered-over-item", index })}
-                        on:mousedown|preventDefault={() => dispatch({ type: "pressed-item", item: item.item })}
-                        class="option"
-                        style="padding: 8px; cursor: pointer; background: {item.status === 'highlighted' ? '#f0f0f0' : 'transparent'}; border-bottom: 1px solid #eee;"
-                    >
-                        {item.inputValue}
-                    </div>
-                {/each}
-            </ul>
-        </div>
+  <div class="flex flex-col sm:flex-row items-start gap-4 sm:gap-6">
+    
+    <!-- Icône + Label -->
+    <div class="left w-full sm:w-48 shrink-0 flex items-start gap-3">
+      <div
+        class="flex items-center justify-center w-9 h-9 rounded-xl 
+               bg-amber-100 text-amber-600 dark:bg-amber-500/20 dark:text-amber-400"
+      >
+        🔐
+      </div>
+      <div>
+        <h3 class="text-base font-semibold text-gray-800 dark:text-gray-100 whitespace-nowrap">
+          Authentification
+        </h3>
+        <p class="text-sm text-gray-500 dark:text-gray-400 sm:hidden">
+          Choisissez la stratégie appliquée lors de l’installation.
+        </p>
+      </div>
     </div>
+
+    <!-- Segmented control -->
+    <div class="right flex-1 relative">
+      <!-- ⚠️ Champ caché qui sera envoyé au serveur -->
+      <input type="hidden" name="authappli" value={options[activeIndex].value} />
+
+      <div class="relative flex flex-wrap sm:inline-flex bg-gray-100 dark:bg-gray-700 rounded-2xl p-1 w-full max-w-md gap-1 sm:gap-0">
+        <!-- Slider animé -->
+        <span class="hidden sm:block absolute h-8 rounded-xl bg-amber-500 transition-all duration-300 ease-out"
+              style="width: calc(100% / {options.length}); transform: translateX({activeIndex * 100}%);"></span>
+
+        {#each options as opt, idx}
+          <button
+            type="button"
+            class="relative z-10 flex-1 text-sm px-3 py-1.5 rounded-xl transition-colors duration-200
+                   {activeIndex === idx 
+                     ? 'bg-amber-500 text-white font-semibold shadow-md sm:bg-transparent sm:text-white' 
+                     : 'text-gray-700 dark:text-gray-300'}"
+            on:click={() => selectOption(opt, idx)}
+          >
+            {opt.label}
+          </button>
+        {/each}
+      </div>
+      <p class="hidden sm:block text-sm text-gray-500 dark:text-gray-400 mt-2">
+        Choisissez la stratégie appliquée lors de l’installation.
+      </p>
+    </div>
+  </div>
 </div>
 
-<div style="height: 10px;"></div>
-
-<CheckboxField {form} name="dossiers_enabled" label="Applications Installées" {formData} />
-{#if $formData.dossiers_enabled}
-    <div transition:slide>
-        <ArrayField {form} name="" {formData}>
-            {#each $formData.dossiers_on_item_type as _, i}
-                <Form.ElementField {form} name="dossiers_on_item_type[{i}]">
-                    <Form.Control let:attrs>
-                        <div class="flex items-center gap-2">
-                            <Input 
-                                type="text" 
-                                spellcheck="false" 
-                                autocomplete="false" 
-                                {...attrs} 
-                                bind:value={$formData.dossiers_on_item_type[i].label} 
-                            />
-                            <div class="flex items-center gap-2">
-                                <!-- Bouton supprimer -->
-                                <Form.Button 
-                                    type="button" 
-                                    size="sm" 
-                                    variant="destructive" 
-                                    on:click={async () => {
-                                        const itemToDelete = $formData.dossiers_on_item_type[i];
-                                        const label = itemToDelete?.label;
-                                        console.log('Label de l\'élément à supprimer:', label);
-
-                                        if (label) {
-                                            const settingId = encodeURIComponent(label);
-                                            if (confirm(`Êtes-vous sûr de vouloir supprimer l'application "${label}" ?`)) {
-                                                try {
-                                                    const response = await fetch(`/settings/delete?setting_id=${settingId}`, {
-                                                        method: 'DELETE',
-                                                        headers: {
-                                                            'Content-Type': 'application/json'
-                                                        }
-                                                    });
-
-                                                    const data = await response.json();
-                                                    console.log('Réponse complète de l\'API :', data);
-
-                                                    if (data.message === 'Settings deleted successfully.') {
-                                                        console.log('Élément supprimé avec succès.');
-
-                                                        // Mise à jour du tableau dossiers_on_item_type
-                                                        $formData = {
-                                                            ...$formData,
-                                                            dossiers_on_item_type: $formData.dossiers_on_item_type.filter((_, index) => index !== i)
-                                                        };
-
-                                                        // Suppression dans authentification
-                                                        const updatedAuthentification = { ...$formData.authentification };
-                                                        delete updatedAuthentification[label];
-                                                        $formData = { ...$formData, authentification: updatedAuthentification };
-
-                                                        // Suppression dans domaine
-                                                        const updatedDomaine = { ...$formData.domaine };
-                                                        delete updatedDomaine[label];
-                                                        $formData = { ...$formData, domaine: updatedDomaine };
-
-                                                        console.log('Données après suppression:', $formData);
-
-                                                        const scriptName = 'suppression';
-
-                                                        const scriptEvent = new CustomEvent('startScript', { 
-                                                            detail: { 
-                                                                scriptName, 
-                                                                label 
-                                                         } 
-                                                       });
-                                                        window.dispatchEvent(scriptEvent);
-                                                        console.log(`Lancement du script ${scriptName}.sh pour l'application: ${label}`);                   
-
-                                                    } else {
-                                                        console.error('Erreur de suppression:', data.message);
-                                                    }
-                                                } catch (error) {
-                                                    console.error('Erreur lors de la suppression:', error);
-                                                }
-                                            }
-                                        } else {
-                                            console.error('L\'élément à supprimer n\'est pas défini ou n\'a pas de label.');
-                                        }
-                                    }}
-                                >
-                                    <Trash2 class="h-4 w-4" />
-                                </Form.Button>
-
-                                <!-- Bouton réinitialiser -->
-                                <Form.Button 
-                                    type="button" 
-                                    title="Réinitialiser l'Application" 
-                                    size="sm" 
-                                    variant="reinitialiser" 
-                                    on:click={async () => {
-                                        const itemToReinitialize = $formData.dossiers_on_item_type[i];
-                                        const label = itemToReinitialize?.label;
-                                        console.log('Label de l\'élément à réinitialiser:', label);
-                                    if (label) {
-                                        try {
-                                            const scriptName = 'reinitialiser';
-                                            const scriptEvent = new CustomEvent('startScript', { 
-                                                detail: { 
-                                                    scriptName, 
-                                                    label 
-                                                } 
-                                            });
-                                            window.dispatchEvent(scriptEvent);
-                                            console.log(`Lancement du script ${scriptName}.sh pour l'application: ${label}`);
-                                        } catch (error) {
-                                            console.error('Erreur lors du lancement du script:', error);
-                                        }
-                                    } else {
-                                        console.error("L'application à réinitialiser n'a pas de label.");
-                                    }
-                                }}
-                                >
-                                    <RefreshCw class="h-4 w-4" />
-                                </Form.Button>
-                            </div>
-                        </div>
-                    </Form.Control>
-                </Form.ElementField>
-            {/each}
-        </ArrayField>
+<!-- Bloc Applications -->
+<div
+  class="card stack 
+         bg-gradient-to-br from-white to-gray-50 dark:from-gray-900 dark:to-gray-800
+         border border-gray-200 dark:border-gray-700 
+         shadow-md hover:shadow-lg transition-shadow
+         rounded-2xl p-6 mb-6"
+>
+  <div class="flex flex-col sm:flex-row items-start gap-4 sm:gap-6">
+    
+    <!-- Icône + Label -->
+    <div class="left w-full sm:w-48 shrink-0 flex items-start gap-3">
+      <div
+        class="flex items-center justify-center w-9 h-9 rounded-xl 
+               bg-amber-100 text-amber-600 dark:bg-amber-500/20 dark:text-amber-400"
+      >
+        📦
+      </div>
+      <div>
+        <h3 class="text-base font-semibold text-gray-800 dark:text-gray-100 whitespace-nowrap">
+          Applications
+        </h3>
+        <p class="text-sm text-gray-500 dark:text-gray-400 sm:hidden">
+          Sélectionnez une application à installer.
+        </p>
+      </div>
     </div>
+
+    <!-- Champ + dropdown -->
+    <div class="right relative flex-1 max-w-sm">
+      <input
+        {...state?.aria.input}
+        bind:this={input}
+        value={state?.inputValue || ""}
+        placeholder="Choisir Application"
+        on:input={(e) => dispatch({ type: "inputted-value", inputValue: e.currentTarget.value })}
+        on:focus={() => dispatch({ type: "focused-input" })}
+        on:blur={() => dispatch({ type: "blurred-input" })}
+        on:mousedown={() => dispatch({ type: "pressed-input" })}
+        on:keydown={onKeydown}
+        class="w-full h-11 px-4 rounded-xl border border-gray-300 bg-white text-gray-900 
+               focus:border-teal-400 focus:ring-2 focus:ring-teal-300 focus:outline-none
+               dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100 
+               dark:focus:border-teal-400 dark:focus:ring-teal-500"
+      />
+      {#if state?.isOpened}
+        <ul
+          {...state?.aria.itemList}
+          class="absolute mt-2 w-full max-h-48 overflow-y-auto rounded-xl shadow-lg z-50 
+                 bg-white text-gray-900 border border-gray-200 
+                 dark:bg-gray-700 dark:text-gray-100 dark:border-gray-600"
+        >
+          {#if state?.renderItems.length === 0}
+            <li class="px-4 py-2 text-sm text-gray-500 dark:text-gray-400">Aucun résultat</li>
+          {/if}
+
+          {#each state?.renderItems as item, index}
+            <li
+              {...item.aria}
+              role="option"
+              aria-selected={item.status === "selected"}
+              on:mousemove={() => dispatch({ type: "hovered-over-item", index })}
+              on:mousedown|preventDefault={() => dispatch({ type: "pressed-item", item: item.item })}
+              class="px-4 py-2 cursor-pointer text-sm rounded-lg flex items-center gap-2
+                     hover:bg-teal-50 dark:hover:bg-teal-600
+                     {item.status === 'highlighted'
+                       ? 'bg-teal-100 dark:bg-teal-600'
+                       : ''}
+                     {item.status === 'selected'
+                       ? 'bg-teal-200 dark:bg-teal-500 font-medium'
+                       : ''}"
+            >
+              📌 {item.inputValue}
+            </li>
+          {/each}
+        </ul>
+      {/if}
+    </div>
+  </div>
+</div>
+
+<!-- Bloc principal Applications installées -->
+<div
+  class="card stack cursor-pointer select-none
+         bg-gradient-to-br from-white to-gray-50 dark:from-gray-900 dark:to-gray-800
+         border border-gray-200 dark:border-gray-700 
+         shadow-sm rounded-2xl p-5 mb-6
+         transition hover:shadow-md"
+  role="button"
+  tabindex="0"
+  aria-pressed={$formData.dossiers_enabled}
+  on:click={() => $formData.dossiers_enabled = !$formData.dossiers_enabled}
+  on:keydown={(e) => (e.key === 'Enter' || e.key === ' ') && ($formData.dossiers_enabled = !$formData.dossiers_enabled)}
+>
+  <div class="flex items-center justify-between">
+    <!-- Icône + Texte -->
+    <div class="flex items-start gap-3">
+      <div
+        class="flex items-center justify-center w-9 h-9 rounded-xl 
+               bg-amber-100 text-amber-600 
+               dark:bg-amber-500/20 dark:text-amber-400"
+      >
+        📦
+      </div>
+      <div>
+        <h3 class="text-base font-semibold text-gray-800 dark:text-gray-100">
+          Applications installées
+        </h3>
+        <p class="text-sm text-gray-500 dark:text-gray-400">
+          Gérez vos applications déjà présentes
+        </p>
+      </div>
+    </div>
+
+    <!-- ✅ Toggle indépendant -->
+    <div class="relative inline-flex items-center">
+      <input
+        id="dossiers_enabled"
+        type="checkbox"
+        bind:checked={$formData.dossiers_enabled}
+        class="sr-only peer"
+      />
+      <div
+        class="w-11 h-6 bg-gray-300 peer-focus:outline-none peer-focus:ring-2 
+               peer-focus:ring-amber-400 dark:peer-focus:ring-amber-500 
+               rounded-full peer dark:bg-gray-700 
+               peer-checked:bg-amber-500 transition-colors duration-300"
+      ></div>
+      <span
+        class="absolute left-1 top-1 w-4 h-4 bg-white rounded-full 
+               transition-transform duration-300 peer-checked:translate-x-5 shadow"
+      ></span>
+    </div>
+  </div>
+</div>
+
+{#if $formData.dossiers_enabled}
+  <div transition:slide>
+    <ArrayField {form} name="" {formData}>
+      {#each $formData.dossiers_on_item_type as _, i}
+        <Form.ElementField {form} name="dossiers_on_item_type[{i}]">
+          <Form.Control let:attrs>
+            
+            <!-- Card par application -->
+            <div
+              class="card stack flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4
+                     bg-gradient-to-br from-white to-gray-50 dark:from-gray-900 dark:to-gray-800
+                     border border-gray-200 dark:border-gray-700 
+                     shadow-md hover:shadow-lg transition-shadow
+                     rounded-2xl p-5 mb-4"
+            >
+              <!-- Icône + Champ -->
+              <div class="flex items-center gap-3 flex-1 w-full">
+                <div
+                  class="flex items-center justify-center w-9 h-9 rounded-xl 
+                         bg-amber-100 text-amber-600 
+                         dark:bg-amber-500/20 dark:text-amber-400 shrink-0"
+                >
+                  📦
+                </div>
+
+                <Input 
+                  type="text" 
+                  spellcheck="false" 
+                  autocomplete="false" 
+                  {...attrs} 
+                  bind:value={$formData.dossiers_on_item_type[i].label}
+                  class="flex-1 h-11 px-3 rounded-xl border border-gray-300 bg-white text-gray-900 
+                         focus:border-amber-400 focus:ring-2 focus:ring-amber-300 focus:outline-none
+                         dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100 
+                         dark:focus:border-amber-400 dark:focus:ring-amber-500"
+                />
+              </div>
+
+              <!-- Actions -->
+              <div class="flex items-center gap-2">
+                <!-- Supprimer -->
+                <Form.Button 
+                  type="button" 
+                  size="sm" 
+                  variant="destructive" 
+                  on:click={async () => {
+                    const item = $formData.dossiers_on_item_type[i];
+                    const label = item?.label;
+
+                    if (label && confirm(`Supprimer "${label}" ?`)) {
+                      try {
+                        const response = await fetch(`/settings/delete?setting_id=${encodeURIComponent(label)}`, {
+                          method: 'DELETE',
+                          headers: { 'Content-Type': 'application/json' }
+                        });
+                        const data = await response.json();
+
+                        if (data.message === 'Settings deleted successfully.') {
+                          // Mise à jour des données
+                          $formData = {
+                            ...$formData,
+                            dossiers_on_item_type: $formData.dossiers_on_item_type.filter((_, index) => index !== i)
+                          };
+                          const updatedAuth = { ...$formData.authentification };
+                          delete updatedAuth[label];
+                          $formData = { ...$formData, authentification: updatedAuth };
+
+                          const updatedDom = { ...$formData.domaine };
+                          delete updatedDom[label];
+                          $formData = { ...$formData, domaine: updatedDom };
+
+                          // ✅ Ouvrir les logs
+                          showLogs = true;
+
+                          // Lancer le script suppression
+                          const scriptEvent = new CustomEvent('startScript', { detail: { scriptName: 'suppression', label } });
+                          window.dispatchEvent(scriptEvent);
+                        }
+                      } catch (err) {
+                        console.error("Erreur suppression:", err);
+                      }
+                    }
+                  }}
+                  class="rounded-lg p-2 hover:bg-red-50 dark:hover:bg-red-900/40 transition"
+                >
+                  <Trash2 class="h-4 w-4 text-red-600 dark:text-red-400" />
+                </Form.Button>
+
+                <!-- Réinitialiser -->
+                <Form.Button 
+                  type="button" 
+                  title="Réinitialiser l'application" 
+                  size="sm" 
+                  variant="reinitialiser" 
+                  on:click={() => {
+                    const item = $formData.dossiers_on_item_type[i];
+                    const label = item?.label;
+                    if (label) {
+                      // ✅ Ouvrir les logs
+                      showLogs = true;
+
+                      const scriptEvent = new CustomEvent('startScript', { detail: { scriptName: 'reinitialiser', label } });
+                      window.dispatchEvent(scriptEvent);
+                    }
+                  }}
+                  class="rounded-lg p-2 hover:bg-amber-50 dark:hover:bg-amber-900/40 transition"
+                >
+                  <RefreshCw class="h-4 w-4 text-amber-600 dark:text-amber-400" />
+                </Form.Button>
+              </div>
+            </div>
+          </Form.Control>
+        </Form.ElementField>
+      {/each}
+    </ArrayField>
+  </div>
 {/if}
 
-    <!-- Champ de saisie visible pour domaine -->
-<div class="mt-4" style="width: 100%;">
-    {#if selectedItem?.label}
-        <div 
-            class="combobox-wrapper" 
-            style="display: flex; align-items: center; gap: 0px; flex-wrap: wrap; width: 100%; max-width: 100%;"
+<!-- Bloc Domaine -->
+{#if selectedItem?.label}
+  <div
+    class="card stack 
+           bg-gradient-to-br from-white to-gray-50 dark:from-gray-900 dark:to-gray-800
+           border border-gray-200 dark:border-gray-700 
+           shadow-sm rounded-2xl p-5 mb-6
+           transition hover:shadow-md"
+  >
+    <div class="flex flex-col sm:flex-row items-start gap-4 sm:gap-6">
+      
+      <!-- Icône + Label -->
+      <div class="left w-full sm:w-48 shrink-0 flex items-start gap-3">
+        <div
+          class="flex items-center justify-center w-9 h-9 rounded-xl 
+                 bg-amber-100 text-amber-600 
+                 dark:bg-amber-500/20 dark:text-amber-400"
         >
-            <!-- Label pour Sous domaine -->
-            <div 
-                class="label-container" 
-                style="flex-shrink: 0; white-space: nowrap; font-size: 1rem; margin-bottom: 4px;"
-            >
-                <p 
-                    class="text-sm" 
-                    style="margin: 0;"
-                >
-                    Sous domaine
-                    <span class="block text-sm text-gray-500">Personnalisé</span>
-                </p>
-            </div>
-
-            <!-- Champ de saisie aligné avec le label -->
-            <div 
-                class="input-container" 
-                style="display: flex; align-items: center; flex-grow: 1; min-width: 200px; max-width: 100%;"
-            >
-                <input 
-                    type="text" 
-                    name="domaine[{selectedItem.label}]" 
-                    id="domaine" 
-                    placeholder="Sous domaine par défaut {selectedItem.label}"
-                    class="input inline-block shadow-sm sm:text-sm border border-gray-300 rounded-md"
-                    style="width: 100%; max-width: 300px; height: 37px; padding: 6px; background-color: transparent; border: 1px solid #ccc; border-radius: 4px;"
-                    bind:value={$formData.domaine[selectedItem.label]}
-                />
-            </div>
+          🌐
         </div>
-    {/if}
-</div>
+        <div>
+          <h3 class="text-base font-semibold text-gray-800 dark:text-gray-100 whitespace-nowrap">
+            Sous-domaine
+          </h3>
+        </div>
+      </div>
+
+      <!-- Champ -->
+      <div class="right flex-1 max-w-sm">
+        <input
+          type="text"
+          name="domaine[{selectedItem.label}]"
+          id="domaine"
+          placeholder="Sous domaine par défaut {selectedItem.label}"
+          class="w-full h-11 px-4 rounded-xl border border-gray-300 bg-white text-gray-900 
+                 focus:border-amber-400 focus:ring-2 focus:ring-amber-300 focus:outline-none
+                 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100 
+                 dark:focus:border-amber-400 dark:focus:ring-amber-500"
+          bind:value={$formData.domaine[selectedItem.label]}
+        />
+        <!-- Texte sous le champ -->
+        <p class="mt-2 text-sm text-gray-500 dark:text-gray-400">
+          Personnalisé pour <strong>{selectedItem.label}</strong>
+        </p>
+      </div>
+    </div>
+  </div>
+{/if}
 {/if}
 
     <input type="hidden" name="domaine" value={JSON.stringify(formData.domaine)} />
@@ -668,12 +722,12 @@
         {/if}
 
         <div class="ml-auto">
-            <Form.Button disabled={isSubmitting} type="submit" size="sm" class="w-full lg:max-w-max">
+            <Form.Button disabled={isSubmitting} type="submit" size="sm" class="w-full lg:max-w-max mb-10">
                 {#if showSpinner}
                     <Loader2 class="mr-2 h-4 w-4 animate-spin" />
                     <p class="text-sm text-gray-500">Soumission en cours...</p>
                 {:else}
-                    Sauvegarder
+                    Installer
                     <span class="ml-1" class:hidden={$page.url.pathname === '/settings/applications'}>
                         et continuer
                     </span>

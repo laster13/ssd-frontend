@@ -401,17 +401,20 @@
     </button>
   </div>
 
-  {#if $activeTab === 'medias'}
-    <div class="space-y-6 w-full m-0" transition:fade>
-      <h2 class="text-xl font-semibold text-sky-600 dark:text-sky-400 mb-4">
-        Planification des Sauvegardes de Liens Symboliques
-      </h2>
+{#if $activeTab === 'medias'}
+  <div class="w-full m-0" transition:fade>
+    <h2 class="text-xl font-semibold text-sky-600 dark:text-sky-400 mb-4">
+      Planification des Sauvegardes de Liens Symboliques
+    </h2>
+
+    <div class="flex flex-col gap-6 w-full max-w-none">
       {#each allFolders as folder (folder)}
         <div
-          class="border p-4 rounded-xl shadow-sm hover:shadow-md transition-shadow duration-200 space-y-4"
+          class="w-full max-w-none border p-4 rounded-xl shadow-sm hover:shadow-md transition-shadow duration-200 space-y-4"
           in:fly={{ y: 20, duration: 300 }}
           out:fade
         >
+          <!-- Titre -->
           <div
             class="text-lg font-semibold text-emerald-600 dark:text-emerald-400 flex items-center gap-2 cursor-pointer"
             role="button"
@@ -422,34 +425,45 @@
             {folder}
             <Dot class={hasSchedule(folder) ? 'text-green-500' : 'text-red-500'} />
           </div>
+
           {#if !collapsedMap[folder]}
             <div
               class="flex flex-col lg:flex-row gap-4 items-start lg:items-center justify-between"
               transition:slide
             >
+              <!-- Zone jour / heure / enregistrer -->
               <div class="flex flex-col sm:flex-row gap-4 items-start sm:items-center">
-                <label for="day-{folder}">Jour :</label>
-                <select
-                  id="day-{folder}"
-                  on:change={(e) => updateEditedDay(folder, e.target.value)}
-                  class="border rounded px-2 py-1 transition-all duration-200 hover:scale-[1.02]"
-                >
-                  {#each days as dayObj}
-                    <option value={dayObj.code} selected={dayObj.code === (allEdited[folder]?.day || 'mon')}>
-                      {dayObj.label}
-                    </option>
-                  {/each}
-                </select>
-                <label for="hour-{folder}">Heure :</label>
-                <input
-                  id="hour-{folder}"
-                  type="number"
-                  min="0"
-                  max="23"
-                  value={allEdited[folder]?.hour}
-                  on:input={(e) => updateEditedHour(folder, parseInt(e.target.value))}
-                  class="border rounded px-2 py-1 w-20 transition-all duration-200 hover:scale-[1.02]"
-                />
+                <!-- Jour -->
+                <div class="flex flex-row items-center gap-2">
+                  <label for="day-{folder}">Jour :</label>
+                  <select
+                    id="day-{folder}"
+                    on:change={(e) => updateEditedDay(folder, e.target.value)}
+                    class="border rounded px-2 py-1 transition-all duration-200 hover:scale-[1.02]"
+                  >
+                    {#each days as dayObj}
+                      <option value={dayObj.code} selected={dayObj.code === (allEdited[folder]?.day || 'mon')}>
+                        {dayObj.label}
+                      </option>
+                    {/each}
+                  </select>
+                </div>
+
+                <!-- Heure -->
+                <div class="flex flex-row items-center gap-2">
+                  <label for="hour-{folder}">Heure :</label>
+                  <input
+                    id="hour-{folder}"
+                    type="number"
+                    min="0"
+                    max="23"
+                    value={allEdited[folder]?.hour}
+                    on:input={(e) => updateEditedHour(folder, parseInt(e.target.value))}
+                    class="border rounded px-2 py-1 w-20 transition-all duration-200 hover:scale-[1.02]"
+                  />
+                </div>
+
+                <!-- Bouton enregistrer -->
                 <Form.Button
                   on:click={() => saveSchedule(folder)}
                   disabled={loadingSaveMap[folder]}
@@ -467,6 +481,8 @@
                   {/if}
                 </Form.Button>
               </div>
+
+              <!-- Sauvegarde manuelle -->
               <div class="flex flex-col gap-1 items-start">
                 <Form.Button
                   on:click={() => runBackup(folder)}
@@ -488,6 +504,8 @@
                 {/if}
               </div>
             </div>
+
+            <!-- Prochaine exécution -->
             {#if allSchedules[folder]}
               <div class="text-sm text-gray-500 mt-2 flex items-center gap-2">
                 <Clock8 class="w-4 h-4 text-gray-400" />
@@ -496,9 +514,10 @@
               </div>
             {/if}
 
+            <!-- Restauration -->
             {#if showBackups[folder]}
               <div
-                class="w-full bg-white dark:bg-zinc-800 p-4 rounded-xl shadow border border-gray-200 dark:border-zinc-700 mt-2 transition-all"
+                class="w-full max-w-none bg-white dark:bg-zinc-800 p-4 rounded-xl shadow border border-gray-200 dark:border-zinc-700 mt-2 transition-all"
                 transition:slide
               >
                 <div class="flex flex-wrap items-center justify-between gap-2 mb-4">
@@ -557,18 +576,18 @@
                     showBackups[folder] = true;
                     fetchBackupsFor(folder);
                   }}
-                    class="inline-flex items-center gap-1 text-sm text-sky-600 hover:text-sky-700 hover:underline transition"
+                  class="inline-flex items-center gap-1 text-sm text-sky-600 hover:text-sky-700 hover:underline transition"
+                >
+                  <svg
+                    class="w-4 h-4"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                    viewBox="0 0 24 24"
                   >
-                    <svg
-                      class="w-4 h-4"
-                      fill="none"
-                      stroke="currentColor"
-                      stroke-width="2"
-                      viewBox="0 0 24 24"
-                    >
-                      <path d="M12 4v16m8-8H4" />
-                    </svg>
-                    <span class="whitespace-nowrap">Afficher les sauvegardes disponibles</span>
+                    <path d="M12 4v16m8-8H4" />
+                  </svg>
+                  <span class="whitespace-nowrap">Afficher les sauvegardes disponibles</span>
                 </button>
               </div>
             {/if}
@@ -576,6 +595,7 @@
         </div>
       {/each}
     </div>
+  </div>
   {:else if $activeTab === 'docker'}
     <div class="space-y-6 w-full m-0" transition:fade>
       <h2 class="text-xl font-semibold text-sky-600 dark:text-sky-400 mb-4">
@@ -599,21 +619,30 @@
       {#if current && !$dockerSchedules[current]}
         <div class="flex flex-col lg:flex-row gap-4 items-start lg:items-center justify-between">
           <div class="flex flex-col sm:flex-row gap-4 items-start sm:items-center">
-            <label for="edited-day">Jour :</label>
-            <select id="edited-day" bind:value={$edited.day}>
-              {#each days as d}
-                <option value={d.code}>{d.label}</option>
-              {/each}
-            </select>
-            <label for="edited-hour">Heure :</label>
-            <input
-              id="edited-hour"
-              type="number"
-              min="0"
-              max="23"
-              bind:value={$edited.hour}
-              class="border rounded px-2 py-1 w-20 transition-all duration-200 hover:scale-[1.02]"
-            />
+            <!-- Jour -->
+            <div class="flex flex-row items-center gap-2">
+              <label for="edited-day">Jour :</label>
+              <select id="edited-day" bind:value={$edited.day}>
+                {#each days as d}
+                  <option value={d.code}>{d.label}</option>
+                {/each}
+              </select>
+            </div>
+
+            <!-- Heure -->
+            <div class="flex flex-row items-center gap-2">
+              <label for="edited-hour">Heure :</label>
+              <input
+                id="edited-hour"
+                type="number"
+                min="0"
+                max="23"
+                bind:value={$edited.hour}
+                class="border rounded px-2 py-1 w-20 transition-all duration-200 hover:scale-[1.02]"
+              />
+            </div>
+
+            <!-- Bouton enregistrer -->
             <Form.Button
               on:click={saveDockerSchedule}
               disabled={$saving}
@@ -652,29 +681,36 @@
               transition:slide
             >
               <div class="flex flex-col sm:flex-row gap-4 items-start sm:items-center">
-                <label for="day-{name}">Jour :</label>
-                <select
-                  id="day-{name}"
-                  bind:value={$dockerSchedules[name].day}
-                  on:change={(e) => updateDockerDay(name, e.target.value)}
-                  class="border rounded px-2 py-1"
-                >
-                  {#each days as d}
-                    <option value={d.code}>{d.label}</option>
-                  {/each}
-                </select>
+                <!-- Jour -->
+                <div class="flex flex-row items-center gap-2">
+                  <label for="day-{name}">Jour :</label>
+                  <select
+                    id="day-{name}"
+                    bind:value={$dockerSchedules[name].day}
+                    on:change={(e) => updateDockerDay(name, e.target.value)}
+                    class="border rounded px-2 py-1"
+                  >
+                    {#each days as d}
+                      <option value={d.code}>{d.label}</option>
+                    {/each}
+                  </select>
+                </div>
 
-                <label for="hour-{name}">Heure :</label>
-                <input
-                  id="hour-{name}"
-                  type="number"
-                  min="0"
-                  max="23"
-                  bind:value={$dockerSchedules[name].hour}
-                  on:input={(e) => updateDockerHour(name, parseInt(e.target.value))}
-                  class="border rounded px-2 py-1 w-20"
-                />
+                <!-- Heure -->
+                <div class="flex flex-row items-center gap-2">
+                  <label for="hour-{name}">Heure :</label>
+                  <input
+                    id="hour-{name}"
+                    type="number"
+                    min="0"
+                    max="23"
+                    bind:value={$dockerSchedules[name].hour}
+                    on:input={(e) => updateDockerHour(name, parseInt(e.target.value))}
+                    class="border rounded px-2 py-1 w-20"
+                  />
+                </div>
 
+                <!-- Boutons -->
                 <Form.Button
                   on:click={() => saveExistingDockerSchedule(name)}
                   disabled={dockerLoadingSaveMap[name]}

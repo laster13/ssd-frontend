@@ -1,14 +1,22 @@
 <script>
   import { onMount } from 'svelte';
   import { writable } from 'svelte/store';
-  import { Save, Loader2, Trash2 } from 'lucide-svelte';
+  import { Save, Loader2, Trash2, FolderPlus, CheckCircle2, XCircle, BellRing } from 'lucide-svelte';
+  import { fade, slide } from 'svelte/transition';
 
   const linksDirs = writable([]);
   const mountDirs = writable([]);
   const radarrApiKey = writable('');
   const sonarrApiKey = writable('');
-  const message = writable('');
+  const discordWebhook = writable('');
   const saving = writable(false);
+
+  // ✅ Toast system
+  const toast = writable(null);
+  function showToast(msg, type = "success") {
+    toast.set({ msg, type });
+    setTimeout(() => toast.set(null), 3000);
+  }
 
   async function loadConfig() {
     try {
@@ -19,17 +27,17 @@
         mountDirs.set(data.mount_dirs || []);
         radarrApiKey.set(data.radarr_api_key || '');
         sonarrApiKey.set(data.sonarr_api_key || '');
+        discordWebhook.set(data.discord_webhook_url || ''); // ✅ Discord
       } else {
-        message.set('Erreur lors du chargement de la configuration');
+        showToast('❌ Erreur lors du chargement', 'error');
       }
     } catch {
-      message.set('Erreur réseau lors du chargement');
+      showToast('🌐 Erreur réseau', 'error');
     }
   }
 
   async function saveConfig() {
     saving.set(true);
-    message.set('');
     try {
       const res = await fetch('/api/v1/symlinks/config', {
         method: 'POST',
@@ -38,33 +46,32 @@
           links_dirs: $linksDirs,
           mount_dirs: $mountDirs,
           radarr_api_key: $radarrApiKey,
-          sonarr_api_key: $sonarrApiKey
+          sonarr_api_key: $sonarrApiKey,
+          discord_webhook_url: $discordWebhook   // ✅ ajouté
         })
       });
       if (res.ok) {
-        message.set('Configuration sauvegardée avec succès !');
+        showToast('✅ Configuration sauvegardée !', 'success');
       } else {
-        message.set('Erreur lors de la sauvegarde');
+        showToast('❌ Erreur lors de la sauvegarde', 'error');
       }
     } catch {
-      message.set('Erreur réseau lors de la sauvegarde');
+      showToast('🌐 Erreur réseau', 'error');
     } finally {
       saving.set(false);
     }
   }
 
   function addLinksDir() {
-    linksDirs.update(dirs => [...dirs, '']);
+    linksDirs.update(dirs => [...dirs, { path: '', manager: 'sonarr' }]);
   }
-
-  function addMountDir() {
-    mountDirs.update(dirs => [...dirs, '']);
-  }
-
   function removeLinksDir(index) {
     linksDirs.update(dirs => dirs.filter((_, i) => i !== index));
   }
 
+  function addMountDir() {
+    mountDirs.update(dirs => [...dirs, ""]);
+  }
   function removeMountDir(index) {
     mountDirs.update(dirs => dirs.filter((_, i) => i !== index));
   }
@@ -72,131 +79,155 @@
   onMount(loadConfig);
 </script>
 
-<main class="w-full max-w-full sm:max-w-xl md:max-w-3xl lg:max-w-5xl xl:max-w-7xl mx-auto p-8 space-y-6 bg-white text-gray-900 dark:bg-gray-900 dark:text-gray-200">
-  <div class="space-y-1 w-full">
-    <h1 class="text-2xl font-semibold text-emerald-600 dark:text-emerald-400">Configuration Symlinks</h1>
-    <p class="text-sm text-gray-600 dark:text-gray-400">
-      Définissez les dossiers utilisés pour les liens symboliques et les clés API de Radarr/Sonarr.
-    </p>
-  </div>
+<main class="w-full max-w-5xl mx-auto p-8 space-y-10">
+  <!-- Toast -->
+  {#if $toast}
+    <div in:slide out:fade
+      class="fixed top-4 right-4 px-4 py-3 rounded-xl shadow-lg flex items-center gap-2 
+        { $toast.type === 'success' ? 'bg-emerald-500 text-white' : 'bg-red-500 text-white' }">
+      {#if $toast.type === 'success'}
+        <CheckCircle2 class="w-5 h-5"/>
+      {:else}
+        <XCircle class="w-5 h-5"/>
+      {/if}
+      <span class="font-medium">{$toast.msg}</span>
+    </div>
+  {/if}
 
-  <form class="w-full space-y-6" on:submit|preventDefault={saveConfig}>
-    <!-- Dossiers Liens Symboliques -->
-    <fieldset>
-      <legend class="legend-azure">Dossiers des liens symboliques</legend>
-      {#each $linksDirs as linkDir, index}
-        <div class="flex items-center space-x-2 mb-2">
-          <label for={`linkDir-${index}`} class="sr-only">Chemin lien symbolique {index + 1}</label>
-          <input
-            id={`linkDir-${index}`}
-            name={`linkDir-${index}`}
-            type="text"
-            bind:value={$linksDirs[index]}
-            placeholder="/links"
-            class="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-4 py-2 text-gray-900 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-emerald-500 transition-all duration-200 hover:scale-[1.01]"
-            required
-          />
-          <button
-            type="button"
-            on:click={() => removeLinksDir(index)}
-            class="text-red-500 hover:text-red-600 transition-transform hover:scale-110"
-            aria-label={`Supprimer le chemin lien symbolique ${index + 1}`}
-          >
-            <Trash2 class="w-5 h-5" />
-          </button>
-        </div>
-      {/each}
-      <button type="button" on:click={addLinksDir} class="mt-2 inline-flex items-center gap-1 text-emerald-600 font-medium hover:text-emerald-700 transition-transform hover:scale-105">
-        ➕ Ajouter un chemin
+  <!-- Header -->
+  <header class="text-center space-y-2">
+    <h1 class="text-4xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-emerald-500 to-teal-400 drop-shadow">
+      ⚙️ Configuration Symlinks
+    </h1>
+    <p class="text-sm text-gray-600 dark:text-gray-400">Gérez vos dossiers, API keys et notifications.</p>
+  </header>
+
+  <form class="space-y-12" on:submit|preventDefault={saveConfig}>
+    <!-- Liens symboliques -->
+    <fieldset class="space-y-4">
+      <legend class="legend-azure text-lg font-semibold">📂 Dossiers symlinks</legend>
+      <div class="space-y-3">
+        {#each $linksDirs as linkDir, index (index)}
+          <div in:fade out:fade class="flex flex-col md:flex-row gap-3 
+              bg-white/70 dark:bg-gray-800/60 backdrop-blur-lg p-4 rounded-xl shadow 
+              border border-gray-200 dark:border-gray-700">
+            <input
+              id={`linkDir-path-${index}`}
+              type="text"
+              bind:value={$linksDirs[index].path}
+              placeholder="/home/ubuntu/Medias/shows"
+              class="flex-1 input"
+              required
+            />
+            <select
+              id={`linkDir-manager-${index}`}
+              bind:value={$linksDirs[index].manager}
+              class="input text-sm"
+              required
+            >
+              <option value="sonarr">Sonarr</option>
+              <option value="radarr">Radarr</option>
+            </select>
+            <button type="button" on:click={() => removeLinksDir(index)}
+              class="text-red-500 hover:text-red-600 hover:scale-110 transition">
+              <Trash2 class="w-5 h-5"/>
+            </button>
+          </div>
+        {/each}
+      </div>
+
+      <button type="button" on:click={addLinksDir} class="btn-outline">
+        <FolderPlus class="w-4 h-4"/> Ajouter un dossier
       </button>
     </fieldset>
 
-    <!-- Dossiers montés RealDebrid -->
-    <fieldset>
-      <legend  class="legend-azure">Dossiers montés RealDebrid/Alledbrid</legend>
-      {#each $mountDirs as mountDir, index}
-        <div class="flex items-center space-x-2 mb-2">
-          <label for={`mountDir-${index}`} class="sr-only">Chemin RealDebrid {index + 1}</label>
-          <input
-            id={`mountDir-${index}`}
-            name={`mountDir-${index}`}
-            type="text"
-            bind:value={$mountDirs[index]}
-            placeholder="/mnt/rd"
-            class="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-4 py-2 text-gray-900 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-emerald-500 transition-all duration-200 hover:scale-[1.01]"
-            required
-          />
-          <button
-            type="button"
-            on:click={() => removeMountDir(index)}
-            class="text-red-500 hover:text-red-600 transition-transform hover:scale-110"
-            aria-label={`Supprimer le chemin RealDebrid ${index + 1}`}
-          >
-            <Trash2 class="w-5 h-5" />
-          </button>
-        </div>
-      {/each}
-      <button type="button" on:click={addMountDir} class="mt-2 inline-flex items-center gap-1 text-emerald-600 font-medium hover:text-emerald-700 transition-transform hover:scale-105">
-        ➕ Ajouter un chemin
+    <!-- Dossiers montés -->
+    <fieldset class="space-y-4">
+      <legend class="legend-azure text-lg font-semibold">🗂️ Dossiers montés</legend>
+      <div class="space-y-3">
+        {#each $mountDirs as mountDir, index (index)}
+          <div in:fade out:fade class="flex items-center gap-3 
+              bg-white/70 dark:bg-gray-800/60 backdrop-blur-lg p-4 rounded-xl shadow 
+              border border-gray-200 dark:border-gray-700">
+            <input id={`mountDir-${index}`} type="text"
+              bind:value={$mountDirs[index]} placeholder="/home/ubuntu/alldebrid/torrents"
+              class="flex-1 input" required/>
+            <button type="button" on:click={() => removeMountDir(index)}
+              class="text-red-500 hover:text-red-600 hover:scale-110 transition">
+              <Trash2 class="w-5 h-5"/>
+            </button>
+          </div>
+        {/each}
+      </div>
+
+      <button type="button" on:click={addMountDir} class="btn-outline">
+        <FolderPlus class="w-4 h-4"/> Ajouter un dossier monté
       </button>
     </fieldset>
 
     <!-- API Keys -->
-    <div>
-      <label for="radarrApiKey" class="legend-azure">Clé API Radarr</label>
-      <input
-        id="radarrApiKey"
-        type="text"
-        bind:value={$radarrApiKey}
-        placeholder="radarr ApiKey"
-        class="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-4 py-2 text-gray-900 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-emerald-500 transition-all duration-200 hover:scale-[1.01]"
-        required
-      />
-    </div>
+    <fieldset class="space-y-6">
+      <legend class="legend-azure text-lg font-semibold">🔑 Clés API</legend>
+      <div class="grid gap-6 md:grid-cols-2">
+        <div>
+          <label for="radarrApiKey" class="label">Radarr API Key</label>
+          <input id="radarrApiKey" type="text" bind:value={$radarrApiKey} class="input w-full" required/>
+        </div>
+        <div>
+          <label for="sonarrApiKey" class="label">Sonarr API Key</label>
+          <input id="sonarrApiKey" type="text" bind:value={$sonarrApiKey} class="input w-full" required/>
+        </div>
+      </div>
+    </fieldset>
 
-    <div>
-      <label for="sonarrApiKey" class="legend-azure">Clé API Sonarr</label>
-      <input
-        id="sonarrApiKey"
-        type="text"
-        bind:value={$sonarrApiKey}
-        placeholder="sonarr ApiKey"
-        class="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-4 py-2 text-gray-900 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-emerald-500 transition-all duration-200 hover:scale-[1.01]"
-        required
-      />
-    </div>
+    <!-- Discord Webhook -->
+    <fieldset class="space-y-6">
+      <legend class="legend-azure text-lg font-semibold">🔔 Notifications Discord</legend>
+      <div class="flex items-center gap-3 
+          bg-white/70 dark:bg-gray-800/60 backdrop-blur-lg p-4 rounded-xl shadow 
+          border border-gray-200 dark:border-gray-700">
+        <BellRing class="w-5 h-5 text-indigo-500"/>
+        <input id="discordWebhook" type="text"
+          bind:value={$discordWebhook}
+          placeholder="https://discord.com/api/webhooks/xxxxx/xxxxx"
+          class="flex-1 input"
+        />
+      </div>
+    </fieldset>
 
-    <!-- Bouton de sauvegarde -->
+    <!-- Bouton -->
     <div class="flex items-center space-x-4">
-      <button
-        type="submit"
-        class="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-500 text-white font-medium shadow-md hover:brightness-110 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
-        disabled={$saving}
-      >
+      <button type="submit" class="btn-primary" disabled={$saving}>
         {#if $saving}
-          <Loader2 class="animate-spin w-5 h-5" />
-          Sauvegarde...
+          <Loader2 class="animate-spin w-5 h-5"/> Sauvegarde...
         {:else}
-          <Save class="w-5 h-5" />
-          Sauvegarder
+          <Save class="w-5 h-5"/> Sauvegarder
         {/if}
       </button>
-
-      {#if $message}
-        <p class="text-sm text-emerald-600 dark:text-emerald-400">{ $message }</p>
-      {/if}
     </div>
   </form>
 </main>
 
 <style>
-  label {
-    color: var(--text-color);
+  .legend-azure { color: #00BFFF; font-weight: 600; margin-bottom: .5rem; display:block; }
+  .label { display:block; margin-bottom:.25rem; font-weight:500; }
+  .input {
+    border-radius:.5rem; border:1px solid var(--tw-border-color);
+    padding:.5rem 1rem; background-color: var(--tw-bg);
+    transition: all .2s ease;
   }
-  .legend-azure {
-    color: #00BFFF; /* Bleu azur classique */
-    font-weight: 500;
-    margin-bottom: 0.5rem;
-    display: block;
+  .btn-primary {
+    display:inline-flex; align-items:center; gap:.5rem;
+    background: linear-gradient(to right,#059669,#0d9488);
+    color:white; padding:.75rem 1.5rem; border-radius:.75rem;
+    font-weight:600; box-shadow:0 2px 6px rgba(0,0,0,.15);
+    transition: all .2s ease;
   }
+  .btn-primary:hover { filter:brightness(1.1); transform:scale(.98); }
+  .btn-outline {
+    display:inline-flex; align-items:center; gap:.5rem;
+    padding:.5rem 1rem; border:1px solid #059669; border-radius:.5rem;
+    color:#059669; font-weight:500; transition:.2s;
+  }
+  .btn-outline:hover { background:#ecfdf5; }
 </style>
