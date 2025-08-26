@@ -5,7 +5,7 @@
   import type { Writable } from 'svelte/store';
   import { onMount } from 'svelte';
   import { writable } from 'svelte/store';
-  import { Save, Loader2, Trash2, FolderPlus, CheckCircle2, XCircle } from 'lucide-svelte';
+  import { Save, Loader2, Trash2, FolderPlus, CheckCircle2, XCircle, BellRing } from 'lucide-svelte';
   import { fade, slide } from 'svelte/transition';
 
   const formProgress = getContext<Writable<number>>('formProgress');
@@ -16,6 +16,7 @@
   const radarrApiKey = writable('');
   const sonarrApiKey = writable('');
   const message = writable('');
+  const discordWebhook = writable('');
   const saving = writable(false);
 
   async function loadConfig() {
@@ -102,7 +103,7 @@
               id={`linkDir-path-${index}`}
               type="text"
               bind:value={$linksDirs[index].path}
-              placeholder="/home/maman/Medias/shows"
+              placeholder="/home/ubuntu/Medias/shows"
               class="flex-1 rounded-lg border border-gray-300 dark:border-gray-600 bg-gray-50/80 dark:bg-gray-900/50 px-4 py-2 focus:outline-none focus:ring-2 focus:ring-emerald-500 transition"
               required
             />
@@ -146,7 +147,7 @@
               id={`mountDir-${index}`}
               type="text"
               bind:value={$mountDirs[index]}
-              placeholder="/home/maman/alldebrid/torrents"
+              placeholder="/home/ubuntu/alldebrid/torrents"
               class="flex-1 rounded-lg border border-gray-300 dark:border-gray-600 bg-gray-50/80 dark:bg-gray-900/50 px-4 py-2 focus:outline-none focus:ring-2 focus:ring-emerald-500 transition"
               required
             />
@@ -192,6 +193,21 @@
             placeholder="Sonarr ApiKey"
             class="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-gray-50/80 dark:bg-gray-900/50 px-4 py-2 focus:outline-none focus:ring-2 focus:ring-emerald-500 transition"
             required
+          />
+        </div>
+      </fieldset>
+
+      <!-- Discord Webhook -->
+      <fieldset class="space-y-6">
+        <legend class="legend-azure text-lg font-semibold">🔔 Notifications Discord</legend>
+        <div class="flex items-center gap-3 
+            bg-white/70 dark:bg-gray-800/60 backdrop-blur-lg p-4 rounded-xl shadow 
+            border border-gray-200 dark:border-gray-700">
+          <BellRing class="w-5 h-5 text-indigo-500"/>
+          <input id="discordWebhook" type="text"
+            bind:value={$discordWebhook}
+            placeholder="https://discord.com/api/webhooks/xxxxx/xxxxx"
+            class="flex-1 input"
           />
         </div>
       </fieldset>
