@@ -75,8 +75,12 @@
   }
 
   function handleScriptCompleted() {
-    setTimeout(() => goto('/onboarding/3'), 100);
+    const path = window.location.pathname;
+    if (path === '/onboarding/2') {
+      setTimeout(() => goto('/onboarding/3'), 100);
+    }
   }
+
 </script>
 
 <!-- Carte Ultra Premium Responsive (moins large) -->
