@@ -10,7 +10,7 @@
   <h2 class="text-2xl md:text-3xl font-normal text-center mb-6">
     ⚙️ <span class="text-transparent bg-clip-text 
                  bg-gradient-to-r from-red-600 via-orange-500 via-yellow-400 to-green-500">
-      Informations Personelles
+      Informations Personnelles
     </span>
   </h2>
 

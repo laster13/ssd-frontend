@@ -1035,27 +1035,21 @@
 {#if $showLatest}
   <!-- Derniers symlinks uniquement (pas de pagination) -->
   <div class="mt-10">
-    <h2 class="relative text-2xl font-extrabold mb-6 flex items-center">
-        <!-- Icône premium animé -->
+    <div class="relative mb-4 flex items-center">
         <span
-            class="mr-3 flex items-center justify-center w-10 h-10 rounded-full 
+            class="mr-2 flex items-center justify-center w-6 h-6 rounded-full 
                    bg-gradient-to-tr from-pink-500 via-purple-500 to-indigo-500
-                   text-white shadow-lg animate-pulse-slow"
+                   text-white shadow-md animate-pulse-slow"
         >
-            <Sparkles class="w-6 h-6 animate-spin-slow" />
+            <Sparkles class="w-4 h-4 animate-spin-slow" />
         </span>
 
-        <!-- Texte avec gradient animé -->
-        <span
-            class="relative bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500
-                   dark:from-indigo-400 dark:via-purple-400 dark:to-pink-400
-                   bg-clip-text text-transparent
-                   animate-gradient-shift bg-[length:200%_200%]
-                   drop-shadow-[0_0_8px_rgba(168,85,247,0.7)]"
-        >
+        <span class="text-sm md:text-base lg:text-lg 
+                     bg-gradient-to-r from-indigo-400 via-purple-400 to-pink-500 
+                     bg-clip-text text-transparent">
             10 Derniers symlinks ajoutés
         </span>
-    </h2>
+    </div>
 
     <div class="space-y-4">
       {#each $latestSymlinks as item}
