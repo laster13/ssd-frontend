@@ -23,49 +23,37 @@ export interface UpdateSonarrPayload {
   is_active?: boolean;
 }
 
-// 👉 Préfixe unique pour toutes les routes Sonarr
 const BASE_URL = '/api/v1/sonarr';
 
 export const sonarr = {
-  /**
-   * Créer une nouvelle instance Sonarr
-   * POST /api/v1/sonarr
-   */
+  // ✅ Instances
   createInstance: (data: CreateSonarrPayload) =>
     axios.post<SonarrInstance>(`${BASE_URL}`, data),
 
-  /**
-   * Tester une nouvelle connexion Sonarr
-   * POST /api/v1/sonarr/test-connection
-   */
   testConnection: (data: CreateSonarrPayload) =>
     axios.post<{ success: boolean; message: string }>(`${BASE_URL}/test-connection`, data),
 
-  /**
-   * Lister les instances Sonarr de l’utilisateur
-   * GET /api/v1/sonarr
-   */
   getInstances: () =>
     axios.get<SonarrInstance[]>(`${BASE_URL}`),
 
-  /**
-   * Mettre à jour une instance existante
-   * PUT /api/v1/sonarr/{id}
-   */
   updateInstance: (id: number, data: UpdateSonarrPayload) =>
     axios.put<SonarrInstance>(`${BASE_URL}/${id}`, data),
 
-  /**
-   * Supprimer (désactiver) une instance
-   * DELETE /api/v1/sonarr/{id}
-   */
   deleteInstance: (id: number) =>
     axios.delete<{ message: string }>(`${BASE_URL}/${id}`),
 
-  /**
-   * Tester une instance existante
-   * POST /api/v1/sonarr/{id}/test-connection
-   */
   testExisting: (id: number) =>
-    axios.post<{ success: boolean; message: string }>(`${BASE_URL}/${id}/test-connection`)
+    axios.post<{ success: boolean; message: string }>(`${BASE_URL}/${id}/test-connection`),
+
+  // ✅ Détails séries
+  getShowDetail: (showId: string, instanceId: number) =>
+    axios.get(`${BASE_URL}/${instanceId}/series/${showId}`),
+
+  // ✅ Lancer un Season It (toute série ou saison précise)
+  seasonIt: (showId: number, seasonNumber: number | null, instanceId: number) =>
+    axios.post(`${BASE_URL}/${instanceId}/series/${showId}/season-it`, { season: seasonNumber }),
+
+  // ✅ Recherche interactive d’une saison
+  searchSeason: (showId: number, seasonNumber: number, instanceId: number) =>
+    axios.post(`${BASE_URL}/${instanceId}/series/${showId}/search`, { season: seasonNumber })
 };

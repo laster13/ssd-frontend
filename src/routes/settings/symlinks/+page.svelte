@@ -1,9 +1,10 @@
 <script lang="ts">
-    import { onMount } from 'svelte';
-    import { writable, derived, get } from 'svelte/store';
-    import { FolderSearch, ChevronDown, Search, Eye, Sparkles, FolderOpen, Trash, Clock, Folder, RefreshCw, Info, Scan, Download, Upload, Filter, Trash2, Loader2, CheckCircle2, Tv } from 'lucide-svelte';
-    import { goto } from '$app/navigation';
-    import Pagination from '$lib/components/Pagination.svelte';
+  import { onMount, createEventDispatcher } from "svelte";
+  import { writable, derived, get } from "svelte/store";
+  import { FolderSearch, ChevronDown, Search, Eye, Sparkles, FolderOpen, Trash, Clock, Folder, RefreshCw, Info, Scan, Download, Upload, Filter, Trash2, Loader2, CheckCircle2, Tv } from "lucide-svelte";
+  import { goto } from "$app/navigation";
+  import Pagination from "$lib/components/Pagination.svelte";
+  import PopupSymlink from "$lib/components/PopupSymlink.svelte";
 
     // Base URL selon dev/prod
     const baseURL = import.meta.env.DEV
@@ -46,10 +47,15 @@
     const repairing = writable(false);
     const repairSuccess = writable(false);
 
+    const selectedItem = writable(null);
+
+    let instanceId: number | null = null;
     let menu: HTMLDetailsElement;
     let sortedColumn: string | null = null;
     let ascending = true;
     let mounted = false;
+    let filtersReady = false;
+
     export const allBrokenCount = writable(0);
     export const showDuplicatesOnly = writable(false);
     export const latestSymlinks = writable<any[]>([]);
@@ -65,25 +71,92 @@
             )
     );
 
+    const duplicates = derived(symlinks, ($symlinks) => {
+        const counts = new Map<string, number>();
+        for (const s of $symlinks) {
+            counts.set(s.target, (counts.get(s.target) || 0) + 1);
+        }
+        return $symlinks.filter(s => counts.get(s.target) > 1);
+    });
+
     let searchTerm = '';
+
     $: searchTerm = $search.trim();
 
-    $: if (mounted && $search !== undefined) {
+    $: if (mounted && filtersReady && $search.trim() !== "") {
         currentPage.set(1);
         refreshList();
     }
 
-    $: if (mounted && $showOrphansOnly !== undefined) {
+    $: if (mounted && filtersReady && $showOrphansOnly === true) {
         refreshList();
     }
 
-    $: if (mounted && $showDuplicatesOnly !== undefined) {
-        loadSymlinks();
+    $: if (mounted && filtersReady && $showDuplicatesOnly === true) {
+        refreshList();
     }
 
     function handleAndClose(action: () => void) {
         action();
         menu?.removeAttribute('open');
+    }
+
+    function closePopup() {
+      selectedItem.set(null);
+    }
+
+    async function openPopup(item) {
+        try {
+            // 🎬 Cas RADARR → tout est déjà dans le store (poster, title, tmdbId)
+            if (item.type === "radarr") {
+                selectedItem.set({
+                    ...item,
+                    overview: "Film importé via Radarr",
+                });
+                return;
+            }
+
+            // 📺 Cas SONARR (séries)
+            if (!item.show_id) {
+                console.warn("⚠ Pas de show_id dans l'item", item);
+                selectedItem.set({
+                    ...item,
+                    poster: null,
+                    title: item.symlink,
+                    overview: "Aucun détail trouvé",
+                });
+                return;
+            }
+
+            // 🔍 Appel API pour récupérer le détail de la série
+            const res = await fetch(`/api/v1/shows/${item.show_id}?instance_id=${instanceId}`);
+            if (!res.ok) {
+                throw new Error("Impossible de charger le détail du show");
+            }
+            const show = await res.json();
+
+            let posterUrl = null;
+            if (show.poster) {
+                posterUrl = `/api/v1/proxy-image?url=${encodeURIComponent(show.poster)}&instance_id=${instanceId}`;
+            }
+
+            // Enrichir l’item et l’envoyer dans le popup
+            selectedItem.set({
+                ...item,
+                title: show.title,
+                overview: show.overview,
+                status: show.status,
+                year: show.year,
+                poster: posterUrl,
+            });
+        } catch (err) {
+            console.error("❌ Erreur openPopup:", err);
+            selectedItem.set({
+                ...item,
+                poster: null,
+                overview: "Erreur lors du chargement des infos",
+            });
+        }
     }
 
     function goToPage(p: number) {
@@ -226,35 +299,15 @@
     }
 
     async function loadSymlinks() {
-        const isDuplicateMode = get(showDuplicatesOnly);
-        const url = isDuplicateMode
-            ? `${baseURL}/api/v1/symlinks/duplicates`
-            : `${baseURL}/api/v1/symlinks?page=1&limit=50`;
-
         try {
-            const res = await fetch(url);
-            if (!res.ok) throw new Error('Erreur chargement');
+            const res = await fetch(`${baseURL}/api/v1/symlinks?page=1&limit=200`);
+            if (!res.ok) throw new Error("Erreur chargement symlinks");
 
             const json = await res.json();
             symlinks.set(json.data);
             totalItems.set(json.total || json.data?.length || 0);
 
-            // Vérification des doublons
-            try {
-                const dupRes = await fetch(`${baseURL}/api/v1/symlinks/duplicates`);
-                if (dupRes.ok) {
-                    const dupJson = await dupRes.json();
-                    const hasSome = (dupJson.total || 0) > 0;
-                    hasDuplicates.set(hasSome);
-                    if (isDuplicateMode && !hasSome) {
-                        showDuplicatesOnly.set(false);
-                    }
-                } else {
-                    hasDuplicates.set(false);
-                }
-            } catch {
-                hasDuplicates.set(false);
-            }
+            logs.update(l => [`Liste initiale chargée (${json.total}) symlinks`, ...l]);
         } catch (e) {
             console.error("❌ loadSymlinks:", e);
         }
@@ -381,25 +434,34 @@
 
     async function deleteSymlink(item: any) {
         if (item.type === 'sonarr') {
-            // 🚫 On ne supprime pas le symlink côté backend
-            // ➜ Appel au nouvel endpoint qui renvoie juste l’ID Sonarr
+            // 🗑️ Suppression côté backend (comme Radarr)
             const { root, relative } = relativeToRoot(item.symlink);
             if (!relative || !root) {
                 alert("Impossible de déterminer le chemin relatif à la racine.");
                 return;
             }
 
-            const route = `/api/v1/symlinks/get-sonarr-id/${encodeURIComponent(relative)}?root=${encodeURIComponent(root)}`;
+            const route = `/api/v1/symlinks/delete-sonarr/${encodeURIComponent(relative)}?root=${encodeURIComponent(root)}`;
+            deleting.update(state => ({ ...state, [item.symlink]: true }));
+            deleteSuccess.update(state => ({ ...state, [item.symlink]: false }));
+
             try {
-                const res = await fetch(`${baseURL}${route}`);
-                if (!res.ok) throw new Error(`HTTP ${res.status}`);
-                const json = await res.json();
-                // ✅ Redirection vers la page de la série
-                window.location.href = `${import.meta.env.VITE_BACKEND_URL_HTTPS}/season/shows/${json.id}`;
-            } catch (e) {
-                alert(`Erreur récupération ID Sonarr : ${e}`);
+                const res = await fetch(`${baseURL}${route}`, { method: 'DELETE' });
+                if (!res.ok) {
+                    const error = await res.json().catch(() => ({}));
+                    console.warn(`Suppression Sonarr locale uniquement : ${error.detail || res.status}`);
+                }
+                logs.update(list => [`🗑️ Supprimé (Sonarr) : ${item.symlink}`, ...list]);
+                deleteSuccess.update(state => ({ ...state, [item.symlink]: true }));
+                setTimeout(() => {
+                    deleteSuccess.update(state => ({ ...state, [item.symlink]: false }));
+                }, 2000);
+            } catch {
+                alert('Erreur réseau lors de la suppression Sonarr');
+            } finally {
+                deleting.update(state => ({ ...state, [item.symlink]: false }));
             }
-            return; // on sort ici, pas de suppression
+            return;
         }
 
         // 🗑️ Suppression classique pour les autres types (Radarr, etc.)
@@ -417,14 +479,13 @@
             const res = await fetch(`${baseURL}${route}`, { method: 'DELETE' });
             if (!res.ok) {
                 const error = await res.json().catch(() => ({}));
-                console.warn(`Suppression locale uniquement : ${error.detail || res.status}`);
+                console.warn(`Suppression Radarr locale uniquement : ${error.detail || res.status}`);
             }
             logs.update(list => [`🗑️ Supprimé : ${item.symlink}`, ...list]);
             deleteSuccess.update(state => ({ ...state, [item.symlink]: true }));
             setTimeout(() => {
                 deleteSuccess.update(state => ({ ...state, [item.symlink]: false }));
             }, 2000);
-            await refreshList();
         } catch {
             alert('Erreur réseau lors de la suppression');
         } finally {
@@ -509,7 +570,7 @@
 
             if (searchTermVal.trim()) params.append('search', searchTermVal.trim());
             if (orphansOnly) params.append('orphans', 'true');
-            const folder = get(selectedDir);          // 'shows'| 'movies' | ''
+            const folder = get(selectedDir);
             if (folder) params.append('folder', folder);
 
             const res = await fetch(`${baseURL}/api/v1/symlinks?${params.toString()}`);
@@ -527,18 +588,6 @@
             refreshSuccess.set(true);
             setTimeout(() => refreshSuccess.set(false), 2000);
 
-            // Vérification doublons
-            try {
-                const dupRes = await fetch(`${baseURL}/api/v1/symlinks/duplicates`);
-                if (dupRes.ok) {
-                    const dupJson = await dupRes.json();
-                    hasDuplicates.set((dupJson.total || 0) > 0);
-                } else {
-                    hasDuplicates.set(false);
-                }
-            } catch {
-                hasDuplicates.set(false);
-            }
         } finally {
             refreshing.set(false);
         }
@@ -613,21 +662,22 @@
 
     onMount(async () => {
         mounted = true;
-        await loadAvailableDirs(); // ➜ ne liste que les racines (shows, movies)
-        await refreshList();
-        await loadSymlinks();
-        await loadLatestSymlinks(); 
+        await loadAvailableDirs();   // ➜ racines
+        await refreshList();         // premier appel volontaire
+
+        filtersReady = true;         // ✅ maintenant on autorise les $:
+
         connectSSE();
 
         const unsubscribe = showOrphansOnly.subscribe(() => {
-            refreshList();
+            if (filtersReady) {
+                refreshList();
+            }
         });
 
-        // Fallback si aucun SSE reçu dans les 2s (ex: apres restart)
+        // Fallback seulement si liste vide
         setTimeout(() => {
-            if (get(showDuplicatesOnly)) {
-                loadSymlinks();
-            } else {
+            if (get(symlinks).length === 0) {
                 refreshList();
             }
         }, 2000);
@@ -637,26 +687,56 @@
         };
     });
 
-    function connectSSE() {
-        const eventSource = new EventSource(`${baseURL}/api/v1/symlinks/events`);
-        eventSource.onmessage = async (event) => {
-            try {
-                JSON.parse(event.data);
-                setTimeout(async () => {
-                    if (get(showDuplicatesOnly)) {
-                        await loadSymlinks();
-                    } else {
-                        await refreshList();
-                    }
-                    await loadLatestSymlinks();
-                }, 100);
-            } catch {}
-        };
-        eventSource.onerror = () => {
-            eventSource.close();
-            setTimeout(() => connectSSE(), 2000);
-        };
-    }
+function connectSSE() {
+    const eventSource = new EventSource(`${baseURL}/api/v1/symlinks/events`);
+
+    // On écoute spécifiquement les événements de type "symlink_update"
+    eventSource.addEventListener("symlink_update", async (event: MessageEvent) => {
+        try {
+            const payload = JSON.parse(event.data);
+            console.log('Événement SSE reçu:', payload); // Log l'événement reçu
+
+            switch (payload.event) {
+                case "symlink_added":
+                    console.log('Symlink ajouté:', payload.item);  // Log de l'ajout du symlink
+                    symlinks.update(list => {
+                        if (!list.some(i => i.symlink === payload.item.symlink)) {
+                            return [payload.item, ...list];
+                        }
+                        return list;
+                    });
+                    totalItems.update(n => n + 1);
+                    break;
+
+                case "symlink_removed":
+                    console.log('Symlink supprimé:', payload.path); // Log de la suppression du symlink
+                    symlinks.update(list =>
+                        list.filter(i => i.symlink !== payload.path)
+                    );
+                    totalItems.update(n => Math.max(0, n - 1));
+                    break;
+
+                case "scan_completed":
+                    console.log('Scan terminé, rafraîchissement de la liste'); // Log de la fin du scan
+                    await refreshList();
+                    break;
+            }
+
+            // 🔄 garder la liste "latest" en cohérence
+            await loadLatestSymlinks();
+
+        } catch (err) {
+            console.error("❌ SSE parse error:", err);
+        }
+    });
+
+    eventSource.onerror = () => {
+        console.error("❌ Erreur SSE, tentative de reconnexion...");
+        eventSource.close();
+        setTimeout(() => connectSSE(), 2000); // reconnexion auto
+    };
+}
+
 </script>
 
 <main class="w-full min-h-screen p-4 sm:p-6 md:p-8 space-y-6 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-200">
@@ -720,7 +800,7 @@
                     </button>
                 {/if}
 
-                {#if $hasDuplicates}
+                {#if $duplicates.length > 0}
                     <button
                         on:click={() => handleAndClose(() => showDuplicatesOnly.update(v => !v))}
                         class="btn btn-yellow-deep animate-pulse-strong w-full justify-start truncate"
@@ -882,7 +962,7 @@
           </span>
         </button>
 
-        {#if $hasDuplicates}
+        {#if $duplicates.length > 0}
             <button
                 on:click={() => showDuplicatesOnly.update(v => !v)}
                 class="btn btn-yellow-deep animate-pulse-strong"
@@ -1036,43 +1116,42 @@
   <!-- Derniers symlinks uniquement (pas de pagination) -->
   <div class="mt-10">
     <div class="relative mb-4 flex items-center">
-        <span
-            class="mr-2 flex items-center justify-center w-6 h-6 rounded-full 
-                   bg-gradient-to-tr from-pink-500 via-purple-500 to-indigo-500
-                   text-white shadow-md animate-pulse-slow"
-        >
-            <Sparkles class="w-4 h-4 animate-spin-slow" />
-        </span>
-
-        <span class="text-sm md:text-base lg:text-lg 
-                     bg-gradient-to-r from-indigo-400 via-purple-400 to-pink-500 
-                     bg-clip-text text-transparent">
-            10 Derniers symlinks ajoutés
-        </span>
+      <span
+        class="mr-2 flex items-center justify-center w-6 h-6 rounded-full 
+               bg-gradient-to-tr from-pink-500 via-purple-500 to-indigo-500
+               text-white shadow-md animate-pulse-slow"
+      >
+        <Sparkles class="w-4 h-4 animate-spin-slow" />
+      </span>
+      <span class="text-sm md:text-base lg:text-lg 
+                   bg-gradient-to-r from-indigo-400 via-purple-400 to-pink-500 
+                   bg-clip-text text-transparent">
+        10 Derniers symlinks ajoutés
+      </span>
     </div>
 
     <div class="space-y-4">
       {#each $latestSymlinks as item}
         <div
-          class="relative p-5 rounded-2xl bg-white dark:bg-gray-800 
+          role="button"
+          tabindex="0"
+          class="cursor-pointer relative p-5 rounded-2xl bg-white dark:bg-gray-800 
                  border border-gray-200 dark:border-gray-700
                  shadow-md hover:shadow-lg transition-transform duration-200 hover:-translate-y-0.5"
+          on:click={() => openPopup(item)}
+          on:keydown={(e) => (e.key === 'Enter' || e.key === ' ') && openPopup(item)}
         >
           <!-- Header -->
-          <div>
-            <p class="text-sm font-bold font-mono text-gray-900 dark:text-gray-50 break-all">
-              {item.symlink}
-            </p>
-            <p class="mt-1 text-sm font-mono text-gray-600 dark:text-gray-400 break-all">
-              ↳ {item.target}
-            </p>
-          </div>
+          <p class="text-sm font-bold font-mono text-gray-900 dark:text-gray-50 break-all">
+            {item.symlink}
+          </p>
+          <p class="mt-1 text-sm font-mono text-gray-600 dark:text-gray-400 break-all">
+            ↳ {item.target}
+          </p>
 
-          <!-- Footer : badges + actions -->
+          <!-- Footer -->
           <div class="mt-3 flex flex-wrap gap-3 items-center justify-between">
-            <!-- Badges -->
             <div class="flex flex-wrap gap-3 items-center">
-              <!-- Ref Count -->
               <span
                 class="inline-flex items-center gap-1 px-3 py-1 rounded-full font-semibold text-xs
                        {item.ref_count === 0
@@ -1082,10 +1161,9 @@
                 {item.ref_count === 0 ? '⚠' : '✔'} Ref Count: {item.ref_count}
               </span>
 
-              <!-- Type (badge cliquable) -->
               {#if item.type && ['radarr', 'sonarr'].includes(item.type.toLowerCase())}
                 <button
-                  on:click={() => openArr(item)}
+                  on:click|stopPropagation={() => openArr(item)}
                   class="inline-flex items-center gap-1 px-3 py-1 rounded-full font-semibold text-xs
                          bg-emerald-100 text-emerald-700 
                          dark:bg-emerald-800 dark:text-emerald-300 
@@ -1097,59 +1175,47 @@
               {/if}
             </div>
 
-            <!-- Actions dynamiques -->
             {#if item.ref_count === 0 || item.target_exists === false}
-              <!-- Lien cassé/orphan → bouton Réparer -->
-              <button
-                on:click={() => deleteSymlink(item)}
-                class="flex items-center gap-2 px-2 py-1 rounded-lg transition-transform hover:scale-105"
-                aria-label="Réparer"
-                title="Réparer"
-              >
-                <div class="grid h-8 w-8 place-items-center rounded-md bg-gradient-to-br from-rose-500 via-orange-500 to-amber-400 shadow">
-                  <svg viewBox="0 0 24 24" class="h-5 w-5 text-white">
-                    <path fill="currentColor" d="M12 2s5 3.5 5 8.5S15 20 12 22c-3-2-5-5-5-9.5S12 2 12 2z"/>
-                  </svg>
-                </div>
-                <span class="text-sm font-semibold tracking-wide bg-gradient-to-r from-rose-500 via-orange-500 to-amber-400 bg-clip-text text-transparent">
-                  Réparer
-                </span>
-              </button>
-            {:else if item.type === 'sonarr'}
-              <!-- Sonarr → bouton Seasonarr -->
-              <button
-                on:click={() => deleteSymlink(item)}
-                class="flex items-center gap-2 px-2 py-1 rounded-lg transition-transform hover:scale-105"
-                aria-label="Seasonarr"
-                title="Seasonarr"
-              >
-                <div class="grid h-8 w-8 place-items-center rounded-md bg-gradient-to-br from-rose-500 via-orange-500 to-amber-400 shadow">
-                  <svg viewBox="0 0 24 24" class="h-5 w-5 text-white">
-                    <path fill="currentColor" d="M12 2s5 3.5 5 8.5S15 20 12 22c-3-2-5-5-5-9.5S12 2 12 2z"/>
-                  </svg>
-                </div>
-                <span class="text-sm font-semibold tracking-wide bg-gradient-to-r from-rose-500 via-orange-500 to-amber-400 bg-clip-text text-transparent">
-                  Seasonarr
-                </span>
-              </button>
-            {:else}
-              <!-- Corbeille classique -->
-              <button
-                on:click={() => deleteSymlink(item)}
-                class="p-1.5 rounded-full border border-red-400 text-red-500
-                       hover:bg-red-50 dark:hover:bg-red-900/30 transition-colors"
-                disabled={$deleting[item.symlink]}
-                aria-label="Supprimer"
-                title="Supprimer"
-              >
-                {#if $deleting[item.symlink]}
-                  <Loader2 class="w-4 h-4 animate-spin" />
-                {:else if $deleteSuccess[item.symlink]}
-                  <CheckCircle2 class="w-4 h-4 text-green-500" />
-                {:else}
-                  <Trash2 class="w-4 h-4" />
-                {/if}
-              </button>
+           <!-- Réparer -->
+            <button
+              on:click|stopPropagation={() => deleteSymlink(item)}
+              class="flex items-center gap-2 px-3 py-1.5 rounded-xl shadow 
+                     bg-gradient-to-r from-slate-500 via-indigo-500 to-gray-600 
+                     text-white font-semibold text-sm tracking-wide
+                     hover:scale-105 hover:shadow-lg transition-all duration-300"
+              disabled={$deleting[item.symlink]}
+              aria-label="Réparer"
+              title="Réparer"
+            >
+              {#if $deleting[item.symlink]}
+                <Loader2 class="w-4 h-4 animate-spin text-white" />
+                <span>Réparation...</span>
+              {:else if $deleteSuccess[item.symlink]}
+                <CheckCircle2 class="w-4 h-4 text-white" />
+                <span>Réparé !</span>
+              {:else}
+                <span>🛠️</span>
+                <span>Réparer</span>
+              {/if}
+            </button>
+          {:else}
+            <!-- Supprimer -->
+            <button
+              on:click|stopPropagation={() => deleteSymlink(item)}
+              class="p-1.5 rounded-full border border-red-400 text-red-500
+                     hover:bg-red-50 dark:hover:bg-red-900/30 transition-colors"
+              disabled={$deleting[item.symlink]}
+              aria-label="Supprimer"
+              title="Supprimer"
+            >
+              {#if $deleting[item.symlink]}
+                <Loader2 class="w-4 h-4 animate-spin" />
+              {:else if $deleteSuccess[item.symlink]}
+                <CheckCircle2 class="w-4 h-4 text-green-500" />
+              {:else}
+                <Trash2 class="w-4 h-4" />
+              {/if}
+            </button>
             {/if}
           </div>
         </div>
@@ -1169,24 +1235,25 @@
   <div class="space-y-4 mt-6">
     {#each $symlinks as item}
       <div
-        class="relative p-5 rounded-2xl bg-white dark:bg-gray-800 
+        role="button"
+        tabindex="0"
+        class="cursor-pointer relative p-5 rounded-2xl bg-white dark:bg-gray-800 
                border border-gray-200 dark:border-gray-700
                shadow-md hover:shadow-lg transition-transform duration-200 hover:-translate-y-0.5"
+        on:click={() => openPopup(item)}
+        on:keydown={(e) => (e.key === 'Enter' || e.key === ' ') && openPopup(item)}
       >
         <!-- Header -->
-        <div>
-          <p class="text-sm font-bold font-mono text-gray-900 dark:text-gray-50 break-all">
-            {item.symlink}
-          </p>
-          <p class="mt-1 text-sm font-mono text-gray-600 dark:text-gray-400 break-all">
-            ↳ {item.target}
-          </p>
-        </div>
+        <p class="text-sm font-bold font-mono text-gray-900 dark:text-gray-50 break-all">
+          {item.symlink}
+        </p>
+        <p class="mt-1 text-sm font-mono text-gray-600 dark:text-gray-400 break-all">
+          ↳ {item.target}
+        </p>
 
-        <!-- Footer : badges + delete button -->
+        <!-- Footer -->
         <div class="mt-3 flex flex-wrap gap-3 items-center justify-between">
           <div class="flex flex-wrap gap-3 items-center">
-            <!-- Ref Count -->
             <span
               class="inline-flex items-center gap-1 px-3 py-1 rounded-full font-semibold text-xs
                      {item.ref_count === 0
@@ -1196,12 +1263,13 @@
               {item.ref_count === 0 ? '⚠' : '✔'} Ref Count: {item.ref_count}
             </span>
 
-            <!-- Type (badge cliquable) -->
             {#if item.type && ['radarr', 'sonarr'].includes(item.type.toLowerCase())}
               <button
-                on:click={() => openArr(item)}
+                on:click|stopPropagation={() => openArr(item)}
                 class="inline-flex items-center gap-1 px-3 py-1 rounded-full font-semibold text-xs
-                       bg-emerald-100 text-emerald-700 dark:bg-emerald-800 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-600
+                       bg-emerald-100 text-emerald-700 
+                       dark:bg-emerald-800 dark:text-emerald-300 
+                       border border-emerald-300 dark:border-emerald-600
                        hover:scale-105 transition-transform"
               >
                 📦 {item.type.toLowerCase()}
@@ -1209,45 +1277,33 @@
             {/if}
           </div>
 
-          <!-- Bouton dynamique -->
           {#if item.ref_count === 0 || item.target_exists === false}
-            <!-- Si lien cassé/orphan ➜ bouton Réparer -->
+            <!-- Réparer -->
             <button
-              on:click={() => deleteSymlink(item)}
-              class="flex items-center gap-2 px-2 py-1 rounded-lg transition-transform hover:scale-105"
+              on:click|stopPropagation={() => deleteSymlink(item)}
+              class="flex items-center gap-2 px-3 py-1.5 rounded-xl shadow 
+                     bg-gradient-to-r from-slate-500 via-indigo-500 to-gray-600 
+                     text-white font-semibold text-sm tracking-wide
+                     hover:scale-105 hover:shadow-lg transition-all duration-300"
+              disabled={$deleting[item.symlink]}
               aria-label="Réparer"
               title="Réparer"
             >
-              <div class="grid h-8 w-8 place-items-center rounded-md bg-gradient-to-br from-rose-500 via-orange-500 to-amber-400 shadow">
-                <svg viewBox="0 0 24 24" class="h-5 w-5 text-white">
-                  <path fill="currentColor" d="M12 2s5 3.5 5 8.5S15 20 12 22c-3-2-5-5-5-9.5S12 2 12 2z"/>
-                </svg>
-              </div>
-              <span class="text-sm font-semibold tracking-wide bg-gradient-to-r from-rose-500 via-orange-500 to-amber-400 bg-clip-text text-transparent">
-                Réparer
-              </span>
-            </button>
-          {:else if item.type === 'sonarr'}
-            <!-- Si Sonarr ➜ bouton Seasonarr -->
-            <button
-              on:click={() => deleteSymlink(item)}
-              class="flex items-center gap-2 px-2 py-1 rounded-lg transition-transform hover:scale-105"
-              aria-label="Seasonarr"
-              title="Seasonarr"
-            >
-              <div class="grid h-8 w-8 place-items-center rounded-md bg-gradient-to-br from-rose-500 via-orange-500 to-amber-400 shadow">
-                <svg viewBox="0 0 24 24" class="h-5 w-5 text-white">
-                  <path fill="currentColor" d="M12 2s5 3.5 5 8.5S15 20 12 22c-3-2-5-5-5-9.5S12 2 12 2z"/>
-                </svg>
-              </div>
-              <span class="text-sm font-semibold tracking-wide bg-gradient-to-r from-rose-500 via-orange-500 to-amber-400 bg-clip-text text-transparent">
-                Seasonarr
-              </span>
+              {#if $deleting[item.symlink]}
+                <Loader2 class="w-4 h-4 animate-spin text-white" />
+                <span>Réparation...</span>
+              {:else if $deleteSuccess[item.symlink]}
+                <CheckCircle2 class="w-4 h-4 text-white" />
+                <span>Réparé !</span>
+              {:else}
+                <span>🛠️</span>
+                <span>Réparer</span>
+              {/if}
             </button>
           {:else}
-            <!-- Sinon ➜ corbeille classique -->
+            <!-- Supprimer -->
             <button
-              on:click={() => deleteSymlink(item)}
+              on:click|stopPropagation={() => deleteSymlink(item)}
               class="p-1.5 rounded-full border border-red-400 text-red-500
                      hover:bg-red-50 dark:hover:bg-red-900/30 transition-colors"
               disabled={$deleting[item.symlink]}
@@ -1267,6 +1323,7 @@
       </div>
     {/each}
   </div>
+
   <!-- Pagination BOTTOM -->
   <Pagination
     page={$currentPage}
@@ -1277,6 +1334,17 @@
 {/if}
 
 </main>
+
+{#if $selectedItem}
+  <PopupSymlink
+    item={$selectedItem}
+    on:delete={(e) => deleteSymlink(e.detail.item)}
+    on:repair={(e) => console.log("repair", e.detail.item)}
+    on:openArr={(e) => openArr(e.detail.item)}
+    on:close={closePopup}
+  />
+{/if}
+
 
 <style>
     .btn {
