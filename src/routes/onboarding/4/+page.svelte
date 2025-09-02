@@ -28,6 +28,7 @@
         mountDirs.set(data.mount_dirs || []); // ✅ Ajout
         radarrApiKey.set(data.radarr_api_key || '');
         sonarrApiKey.set(data.sonarr_api_key || '');
+        discordWebhook.set(data.discord_webhook_url || '');
       } else {
         message.set('❌ Erreur lors du chargement de la configuration');
       }
@@ -47,7 +48,8 @@
           links_dirs: $linksDirs,
           mount_dirs: $mountDirs, // ✅ Ajout
           radarr_api_key: $radarrApiKey,
-          sonarr_api_key: $sonarrApiKey
+          sonarr_api_key: $sonarrApiKey,
+          discord_webhook_url: $discordWebhook
         })
       });
       if (res.ok) {
