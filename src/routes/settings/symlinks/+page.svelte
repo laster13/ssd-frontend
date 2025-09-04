@@ -764,24 +764,10 @@ function connectSSE() {
                 </button>
 
                 <button
-                    on:click={() => handleAndClose(repairMissingSeasons)}
-                    class="btn btn-indigo-deep w-full justify-start truncate"
-                    disabled={$repairing}
-                >
-                    {#if $repairing}
-                        <Loader2 class="w-4 h-4 animate-spin text-white" /> Réparation...
-                    {:else if $repairSuccess}
-                        <CheckCircle2 class="w-4 h-4 text-white" /> Réparé !
-                    {:else}
-                        🛠️ Réparer Saisons Incomplètes
-                    {/if}
-                </button>
-
-                <button
                   on:click={() => window.location.href = `${import.meta.env.VITE_BACKEND_URL_HTTPS}/season/dashboard`}
                   class="btn bg-purple-600 hover:bg-purple-700 text-white w-full justify-start truncate"
                 >
-                  <Tv class="w-4 h-4 text-white" /> Seasonarr
+                  <Tv class="w-4 h-4 text-white" /> Seasonarr ( Packs Saisons )
                 </button>
 
                 {#if $allBrokenCount > 0}
@@ -895,21 +881,11 @@ function connectSSE() {
             <Filter class="w-4 h-4" /> Symlinks brisés
         </button>
 
-        <button on:click={repairMissingSeasons} class="btn btn-indigo-deep" disabled={$repairing}>
-            {#if $repairing}
-                <Loader2 class="w-4 h-4 animate-spin text-white" /> Réparation...
-            {:else if $repairSuccess}
-                <CheckCircle2 class="w-4 h-4 text-white" /> Réparé !
-            {:else}
-                🛠️ Réparer Saisons Incomplètes
-            {/if}
-        </button>
-
         <button
           on:click={() => window.location.href = `${baseURL}/season/dashboard`}
           class="btn bg-purple-600 hover:bg-purple-700 text-white"
         >
-          <Tv class="w-4 h-4 text-white" /> Seasonarr
+          <Tv class="w-4 h-4 text-white" /> Seasonarr ( Packs Saisons )
         </button>
 
         <!-- Toggle Derniers symlinks -->
@@ -1365,10 +1341,6 @@ function connectSSE() {
 
     .btn-red-deep {
         @apply bg-red-700 hover:bg-red-800 text-white focus-visible:ring-red-500;
-    }
-
-    .btn-indigo-deep {
-        @apply bg-indigo-600 hover:bg-indigo-700 text-white focus-visible:ring-indigo-400;
     }
 
     .btn-yellow-deep {
