@@ -42,18 +42,27 @@
 
   // --------- utils ---------
   function relativeToRoot(absPath: string): { root: string | null; relative: string } {
-    const roots = ["shows", "movies"]; // adapte si besoin à tes racines
     if (!absPath) return { root: null, relative: "" };
+
     const norm = absPath.replace(/\\/g, "/");
-    for (const r of roots) {
-      const needle = `/${r}/`;
-      const idx = norm.indexOf(needle);
-      if (idx !== -1) {
-        const rel = norm.substring(idx + needle.length);
-        return { root: r, relative: rel };
-      }
+    const needle = "/Medias/";
+    const idx = norm.indexOf(needle);
+
+    if (idx === -1) {
+      return { root: null, relative: "" }; // pas trouvé
     }
-    return { root: null, relative: "" };
+
+    // après "Medias/"
+    const afterMedias = norm.substring(idx + needle.length);
+
+    // root = premier dossier après "Medias/"
+    const parts = afterMedias.split("/");
+    const root = parts[0] || null;
+
+    // relative = tout ce qui suit root
+    const relative = parts.slice(1).join("/");
+
+    return { root, relative };
   }
 
   // --------- actions ---------
