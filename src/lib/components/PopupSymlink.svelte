@@ -2,109 +2,34 @@
   import { createEventDispatcher, onMount, onDestroy } from "svelte";
   import { fade, fly, scale } from "svelte/transition";
   import { cubicOut } from "svelte/easing";
-  import { ExternalLink, Wrench, ShieldCheck, Tv } from "lucide-svelte";
+  import { ExternalLink, Wrench, Tv, X, Play } from "lucide-svelte";
 
-  // base URL API backend
   const baseURL = import.meta.env.DEV
     ? import.meta.env.VITE_BACKEND_URL_HTTP
     : import.meta.env.VITE_BACKEND_URL_HTTPS;
 
-  export let item: {
-    symlink: string;
-    target: string;
-    ref_count: number;
-    type: string;
-    status?: string;
-    poster?: string;
-    id?: number;
-    title?: string;
-    year?: number;
-    rating?: number;
-    genres?: string[];
-    certification?: string;
-    runtime?: number;
-    language?: string;
-    target_exists?: boolean;
-  };
-
-  console.log("📦 item reçu dans popup:", item);
+  export let item: any;
 
   const dispatch = createEventDispatcher();
 
   let posterUrl: string | null = item?.poster || null;
+  let backdropUrl: string | null = null;
+  let logoUrl: string | null = null;
   let sonarrData: any = null;
-  let loadingTitle: boolean = false;
+  let tmdbData: any = null;
+  let showFullOverview = false;
+  let showTrailer = false;
 
+  let loadingTitle = false;
   let loadingOpen = false;
   let loadingRepair = false;
-  let loadingDelete = false;
   let loadingSeasonarr = false;
 
-  // --------- utils ---------
-  function relativeToRoot(absPath: string): { root: string | null; relative: string } {
-    if (!absPath) return { root: null, relative: "" };
+  const isBroken = item.ref_count === 0 || item.target_exists === false;
 
-    const norm = absPath.replace(/\\/g, "/");
-    const needle = "/Medias/";
-    const idx = norm.indexOf(needle);
+  // Flag trailer VF
+  let isFrenchTrailer = false;
 
-    if (idx === -1) {
-      return { root: null, relative: "" }; // pas trouvé
-    }
-
-    // après "Medias/"
-    const afterMedias = norm.substring(idx + needle.length);
-
-    // root = premier dossier après "Medias/"
-    const parts = afterMedias.split("/");
-    const root = parts[0] || null;
-
-    // relative = tout ce qui suit root
-    const relative = parts.slice(1).join("/");
-
-    return { root, relative };
-  }
-
-  // --------- actions ---------
-  function openArr() {
-    loadingOpen = true;
-    dispatch("openArr", { item });
-    setTimeout(() => (loadingOpen = false), 1200);
-  }
-  function repair() {
-    loadingRepair = true;
-    dispatch("delete", { item }); // ta logique de réparation
-    setTimeout(() => (loadingRepair = false), 1500);
-  }
-  function deleteSymlink() {
-    loadingDelete = true;
-    dispatch("delete", { item });
-    setTimeout(() => (loadingDelete = false), 1000);
-  }
-  async function openSeasonarr() {
-    if (item.type.toLowerCase() !== "sonarr") return;
-    loadingSeasonarr = true;
-
-    const { root, relative } = relativeToRoot(item.symlink);
-    if (!relative || !root) {
-      alert("Impossible de déterminer le chemin relatif à la racine.");
-      loadingSeasonarr = false;
-      return;
-    }
-
-    const route = `/api/v1/symlinks/get-sonarr-id/${encodeURIComponent(relative)}?root=${encodeURIComponent(root)}`;
-    try {
-      const res = await fetch(`${baseURL}${route}`);
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const json = await res.json();
-      if (!json.id) throw new Error("Pas d'ID série retourné");
-      window.location.href = `${import.meta.env.VITE_BACKEND_URL_HTTPS}/season/shows/${json.id}`;
-    } catch (e) {
-      alert(`Erreur récupération ID Sonarr : ${e}`);
-    } finally {
-      loadingSeasonarr = false;
-    }
-  }
   function close() {
     dispatch("close");
   }
@@ -112,7 +37,106 @@
     if (e.key === "Escape") close();
   }
 
-  // --------- lifecycle ---------
+  function openArr() {
+    loadingOpen = true;
+    dispatch("openArr", { item });
+    setTimeout(() => (loadingOpen = false), 1000);
+  }
+
+  function repair() {
+    loadingRepair = true;
+    dispatch("delete", { item });
+    setTimeout(() => (loadingRepair = false), 1200);
+  }
+
+  async function openSeasonarr() {
+    if (item.type.toLowerCase() !== "sonarr") return;
+    loadingSeasonarr = true;
+    try {
+      const res = await fetch(
+        `${baseURL}/api/v1/symlinks/get-sonarr-id/${encodeURIComponent(item.symlink)}`
+      );
+      if (res.ok) {
+        const json = await res.json();
+        if (json.id) {
+          window.location.href = `${import.meta.env.VITE_BACKEND_URL_HTTPS}/season/shows/${json.id}`;
+        }
+      }
+    } finally {
+      loadingSeasonarr = false;
+    }
+  }
+
+  function fadeAndScale(node, { delay = 0, duration = 400 }) {
+    const fadeTrans = fade(node, { duration });
+    const scaleTrans = scale(node, { start: 0.9, duration, easing: cubicOut });
+    return { delay, duration, css: (t, u) => `${fadeTrans.css(t, u)} ${scaleTrans.css(t, u)}` };
+  }
+
+  function flyAndScale(node, { delay = 0, duration = 250 }) {
+    const flyTrans = fly(node, { y: 20, duration, easing: cubicOut });
+    const scaleTrans = scale(node, { start: 0.96, duration, easing: cubicOut });
+    return { delay, duration, css: (t, u) => `${flyTrans.css(t, u)};${scaleTrans.css(t, u)}` };
+  }
+
+  // --- YouTube: chercher une bande-annonce VF en priorité ---
+  async function fetchYouTubeTrailer(title: string, year?: number) {
+    const query = `${title} bande annonce VF ${year || ""}`.trim();
+    const url = `https://www.googleapis.com/youtube/v3/search?part=snippet&maxResults=1&type=video&q=${encodeURIComponent(
+      query
+    )}&key=${import.meta.env.VITE_YOUTUBE_API_KEY}`;
+
+    try {
+      const res = await fetch(url);
+      if (!res.ok) return null;
+
+      const json = await res.json();
+      if (json.items?.length) {
+        const video = json.items[0];
+        const videoId = video.id.videoId;
+        const title = video.snippet.title.toLowerCase();
+
+        // VF détectée
+        isFrenchTrailer = title.includes("vf") || title.includes("français");
+
+        return `https://www.youtube.com/watch?v=${videoId}`;
+      }
+    } catch (e) {
+      console.error("YouTube trailer fetch failed:", e);
+    }
+
+    return null;
+  }
+
+  // --- TMDB : FR prioritaire, fallback EN si trailer manquant ---
+  async function fetchTmdbData(type: string, id: number) {
+    async function fetchLang(lang: string) {
+      const res = await fetch(`${baseURL}/api/v1/symlinks/tmdb/${type}/${id}?lang=${lang}`);
+      if (!res.ok) return null;
+      return await res.json();
+    }
+
+    const frData = await fetchLang("fr-FR");
+    let data = frData;
+
+    if (!frData?.trailer) {
+      const enData = await fetchLang("en-US");
+      if (enData) {
+        data = {
+          ...frData,
+          trailer: enData.trailer || frData?.trailer,
+          cast: frData?.cast?.length ? frData.cast : enData.cast
+        };
+
+        if (!frData?.poster && enData.poster) data.poster = enData.poster;
+        if (!frData?.backdrop && enData.backdrop) data.backdrop = enData.backdrop;
+        if (!frData?.logo && enData.logo) data.logo = enData.logo;
+      }
+    }
+
+    return data;
+  }
+
   onMount(async () => {
     window.addEventListener("keydown", handleKey);
     document.body.classList.add("overflow-hidden");
@@ -121,25 +145,37 @@
       loadingTitle = true;
       try {
         const res = await fetch(
-          `/api/v1/symlinks/get-sonarr-id/${encodeURIComponent(item.symlink)}`,
-          { headers: { accept: "application/json" } }
+          `${baseURL}/api/v1/symlinks/get-sonarr-id/${encodeURIComponent(item.symlink)}`
         );
         if (res.ok) {
           sonarrData = await res.json();
-          if (sonarrData.poster) {
-            item.poster = sonarrData.poster;
-            posterUrl = sonarrData.poster;
-          }
+          if (sonarrData.poster) posterUrl = sonarrData.poster;
+          if (sonarrData.tmdbId) item.tmdbId = sonarrData.tmdbId;
         }
-      } catch (err) {
-        console.error("💥 Erreur API get-sonarr-id:", err);
       } finally {
         loadingTitle = false;
       }
     }
 
-    if (!posterUrl) {
-      posterUrl = item?.poster || null;
+    if (item.tmdbId) {
+      const type = item.type.toLowerCase() === "radarr" ? "movie" : "tv";
+      try {
+        tmdbData = await fetchTmdbData(type, item.tmdbId);
+
+        // Trailer YouTube VF prioritaire
+        const title = tmdbData?.title || sonarrData?.title || item.title;
+        const trailer = await fetchYouTubeTrailer(title, item.year || tmdbData?.year);
+
+        if (trailer) {
+          tmdbData.trailer = trailer;
+        }
+
+        if (tmdbData?.poster && !posterUrl) posterUrl = tmdbData.poster;
+        if (tmdbData?.backdrop) backdropUrl = tmdbData.backdrop;
+        if (tmdbData?.logo) logoUrl = tmdbData.logo;
+      } catch (err) {
+        console.error("TMDB error:", err);
+      }
     }
   });
 
@@ -147,216 +183,169 @@
     window.removeEventListener("keydown", handleKey);
     document.body.classList.remove("overflow-hidden");
   });
-
-  // --------- animations ---------
-  function flyAndScale(node, { delay = 0, duration = 250 }) {
-    const flyTrans = fly(node, { y: 20, duration, easing: cubicOut });
-    const scaleTrans = scale(node, { start: 0.96, duration, easing: cubicOut });
-    return {
-      delay,
-      duration,
-      css: (t, u) => `${flyTrans.css(t, u)};${scaleTrans.css(t, u)}`
-    };
-  }
-
-  // --------- styles boutons ---------
-  const isBroken = item.ref_count === 0 || item.target_exists === false;
-  function buttonClasses(state: "open" | "repair-active" | "repair-disabled" | "seasonarr") {
-    const colors = {
-      open: "from-blue-500/80 to-indigo-500/80 hover:from-blue-600 hover:to-indigo-600 focus:ring-indigo-300",
-      "repair-active": "from-emerald-500/80 to-rose-500/80 hover:from-emerald-600 hover:to-rose-600 focus:ring-emerald-300",
-      "repair-disabled": "from-indigo-300/70 to-purple-300/70 cursor-not-allowed opacity-70",
-      seasonarr: "from-pink-400/80 to-purple-500/80 hover:from-pink-500 hover:to-purple-600 focus:ring-pink-300"
-    };
-    return colors[state];
-  }
 </script>
 
-<!-- Overlay -->
 <div
-  class="fixed inset-0 bg-gradient-to-br from-black/80 via-black/70 to-black/90
-         flex items-center justify-center z-50"
+  class="fixed inset-0 z-50 flex items-center justify-center bg-black/80"
   on:click={close}
-  role="presentation"
-  aria-hidden="true"
   in:fade={{ duration: 250 }}
   out:fade={{ duration: 200 }}
 >
-  <!-- Modal -->
   <section
-    class="relative bg-white/90 dark:bg-gray-900/90 md:bg-white/80 md:dark:bg-gray-900/80 md:backdrop-blur-md
-           rounded-2xl border border-white/20
-           shadow-[0_8px_40px_rgba(99,102,241,0.25)]
-           w-full max-w-2xl max-h-[90vh] overflow-y-auto
-           mx-auto p-6 space-y-6"
-    role="dialog"
-    aria-modal="true"
+    class="relative w-full max-w-6xl h-[95vh] mx-auto
+           bg-black rounded-3xl shadow-2xl overflow-hidden"
+    on:click|stopPropagation
     transition:flyAndScale={{ duration: 250 }}
   >
-    <div on:click|stopPropagation role="presentation" aria-hidden="true">
-      <!-- Bouton fermer -->
-      <button
-        class="absolute top-4 right-4 text-gray-400 hover:text-gray-700 dark:hover:text-gray-200
-               transition transform hover:scale-110"
-        on:click={close}
-        aria-label="Fermer"
-      >
-        ✖
-      </button>
+    <button
+      class="absolute top-4 right-4 z-50 text-white hover:text-gray-300 hover:scale-110 transition"
+      on:click={close}
+      aria-label="Fermer"
+    >
+      <X class="w-6 h-6" />
+    </button>
 
-      <!-- Header -->
-      <div class="flex flex-col sm:flex-row gap-6 items-center sm:items-start">
+    <!-- Backdrop -->
+    <div class="absolute inset-0 w-full h-full">
+      {#if backdropUrl}
+        <img src={backdropUrl} alt="Backdrop" class="absolute inset-0 w-full h-full object-cover" />
+      {/if}
+      <div class="absolute inset-0 bg-gradient-to-t from-black via-black/70 to-transparent"></div>
+    </div>
+
+    <!-- Overlay content -->
+    <div class="relative z-20 flex flex-col gap-6 sm:gap-10 p-6 sm:p-12 text-white h-full overflow-y-auto">
+      <div class="flex flex-col sm:flex-row gap-6 sm:gap-10 items-center sm:items-start">
         {#if posterUrl}
-          <img
-            src={posterUrl}
-            alt="Poster"
-            class="w-28 h-40 sm:w-36 sm:h-52 rounded-xl object-cover shadow-lg ring-1 ring-white/30"
-          />
+          <div class="w-32 sm:w-48 flex-shrink-0">
+            <img src={posterUrl} alt="Poster" class="w-full aspect-[2/3] object-cover rounded-2xl shadow-2xl" />
+          </div>
         {/if}
-        <div class="flex flex-col gap-2 text-center sm:text-left w-full">
-          <h2 class="text-xl sm:text-2xl font-bold bg-gradient-to-r from-purple-600 to-blue-500 bg-clip-text text-transparent">
+
+        <div class="flex flex-col gap-4 sm:gap-6 text-center sm:text-left max-w-2xl">
+          {#if logoUrl}
+            <img src={logoUrl} alt="Logo" class="h-12 sm:h-20 object-contain mx-auto sm:mx-0" />
+          {:else}
             {#if loadingTitle}
-              Chargement…
-            {:else if sonarrData}
-              {sonarrData.title}
-            {:else if item.title}
-              {item.title}
+              <div class="h-8 sm:h-12 w-48 sm:w-72 rounded-md 
+                          bg-gradient-to-r from-gray-700 via-gray-600 to-gray-700 
+                          animate-pulse mx-auto sm:mx-0"></div>
             {:else}
-              {item.symlink}
-            {/if}
-          </h2>
-
-          <!-- Infos principales -->
-          <div class="flex flex-wrap gap-2 text-sm text-gray-700 dark:text-gray-300">
-            {#if item.type === "radarr"}
-              {#if item.year}
-                <span class="px-2 py-0.5 rounded bg-gray-200 dark:bg-gray-700">📅 {item.year}</span>
-              {/if}
-              {#if item.rating}
-                <span class="px-2 py-0.5 rounded bg-yellow-200 dark:bg-yellow-700">⭐ {item.rating.toFixed(1)}/10</span>
-              {/if}
-              {#if item.genres && item.genres.length > 0}
-                <span class="px-2 py-0.5 rounded bg-indigo-200 dark:bg-gray-700">🎭 {item.genres.join(", ")}</span>
-              {/if}
-              {#if item.certification}
-                <span class="px-2 py-0.5 rounded bg-green-200 dark:bg-green-700">🔖 {item.certification}</span>
-              {/if}
-              {#if item.runtime}
-                <span class="px-2 py-0.5 rounded bg-pink-200 dark:bg-pink-700">⏱️ {item.runtime} min</span>
-              {/if}
-              {#if item.language}
-                <span class="px-2 py-0.5 rounded bg-purple-200 dark:bg-purple-700">🌐 {item.language}</span>
-              {/if}
-            {:else if sonarrData}
-              {#if sonarrData.year}
-                <span class="px-2 py-0.5 rounded bg-gray-200 dark:bg-gray-700">📅 {sonarrData.year}</span>
-              {/if}
-              {#if sonarrData.status}
-                <span class="px-2 py-0.5 rounded bg-red-200 dark:bg-red-700">📌 {sonarrData.status}</span>
-              {/if}
-              {#if sonarrData.network}
-                <span class="px-2 py-0.5 rounded bg-blue-200 dark:bg-blue-700">📺 {sonarrData.network}</span>
-              {/if}
-              {#if sonarrData.genres && sonarrData.genres.length > 0}
-                <span class="px-2 py-0.5 rounded bg-indigo-200 dark:bg-indigo-700">🎭 {sonarrData.genres.join(", ")}</span>
+              {#if tmdbData?.title || sonarrData?.title}
+                <h2 transition:fadeAndScale={{ duration: 400 }}
+                    class="text-2xl sm:text-4xl font-extrabold drop-shadow-lg">
+                  {tmdbData?.title || sonarrData?.title}
+                </h2>
+              {:else}
+                <div class="h-8 sm:h-12 w-48 sm:w-72 rounded-md 
+                            bg-gradient-to-r from-gray-700 via-gray-600 to-gray-700 
+                            animate-pulse mx-auto sm:mx-0"></div>
               {/if}
             {/if}
-          </div>
+          {/if}
 
-          <!-- 🔥 Bloc statut -->
-          <div class="mt-3">
-            {#if item.ref_count === 0}
-              <span class="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold
-                           bg-gradient-to-r from-red-500/80 to-orange-500/80 text-white shadow-lg">
-                ⚠ Symlink orphelin
+          <div class="flex flex-wrap justify-center sm:justify-start gap-2 sm:gap-3 text-xs sm:text-sm">
+            {#if item.year || tmdbData?.year}
+              <span class="px-2 sm:px-3 py-1 rounded-full bg-white/20">📅 {item.year || tmdbData.year}</span>
+            {/if}
+            {#if item.rating || tmdbData?.rating}
+              <span class="px-2 sm:px-3 py-1 rounded-full bg-yellow-500/80">
+                ⭐ {(item.rating || tmdbData.rating).toFixed(1)}/10
               </span>
-            {:else if item.target_exists === false}
-              <span class="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold
-                           bg-gradient-to-r from-gray-400/70 to-gray-600/70 text-white shadow-lg">
-                ❌ Cible introuvable
+            {/if}
+            {#if item.genres?.length || tmdbData?.genres?.length}
+              <span class="px-2 sm:px-3 py-1 rounded-full bg-indigo-500/60">
+                🎭 {(item.genres || tmdbData.genres).join(", ")}
               </span>
-            {:else}
-              <span class="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold
-                           bg-gradient-to-r from-emerald-500/80 to-teal-500/80 text-white shadow-lg">
-                ✔ Symlink valide
+            {/if}
+            {#if tmdbData?.runtime}
+              <span class="px-2 sm:px-3 py-1 rounded-full bg-pink-500/60">
+                ⏱ {tmdbData.runtime} min
               </span>
             {/if}
           </div>
 
-          <!-- Bloc épisode (si Sonarr + S/E détecté) -->
-          {#if sonarrData && sonarrData.season && sonarrData.episode}
-            <div class="mt-3 p-3 rounded-xl bg-gradient-to-r from-purple-50 to-blue-50 dark:from-gray-800 dark:to-gray-700 shadow-inner">
-              <p class="text-sm font-semibold text-gray-800 dark:text-gray-200">
-                🎞️ Épisode : S{String(sonarrData.season).padStart(2, "0")}E{String(sonarrData.episode).padStart(2, "0")}
-              </p>
-              {#if sonarrData.episodeTitle}
-                <p class="text-sm text-gray-700 dark:text-gray-300">📖 {sonarrData.episodeTitle}</p>
+          {#if tmdbData?.overview}
+            <p class="text-sm sm:text-base text-gray-200 leading-relaxed">
+              {#if showFullOverview}
+                {tmdbData.overview}
+                <button class="ml-2 text-indigo-300 underline"
+                        on:click={() => showFullOverview = false}>moins</button>
+              {:else}
+                {tmdbData.overview.slice(0, 200)}...
+                <button class="ml-2 text-indigo-300 underline"
+                        on:click={() => showFullOverview = true}>plus</button>
               {/if}
-              {#if sonarrData.downloaded !== null}
-                <p class="text-sm">
-                  📂 Téléchargé :
-                  {sonarrData.downloaded ? "✅ Oui" : "❌ Non"}
-                </p>
-              {/if}
-            </div>
+            </p>
+          {/if}
+
+          {#if tmdbData?.trailer}
+            <button class="inline-flex items-center gap-2 bg-red-600 text-white font-bold 
+                           px-3 py-1.5 rounded-md hover:bg-red-700 transition mt-2 text-sm 
+                           w-fit mx-auto sm:mx-0"
+                    on:click={() => showTrailer = true}>
+              <Play class="w-4 h-4" /> Bande-annonce
+            </button>
           {/if}
         </div>
       </div>
 
-      <!-- Actions -->
-      <div class="flex flex-col sm:flex-row gap-3 justify-end pt-4 border-t border-gray-200 dark:border-gray-700">
-        <!-- Bouton ouvrir -->
-        <button
-          class={`relative flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl font-semibold text-sm 
-                  bg-gradient-to-r ${buttonClasses("open")} text-white
-                  hover:scale-105 focus:ring-2`}
-          on:click={openArr}
-          disabled={loadingOpen}
-        >
-          {#if loadingOpen}
-            <span class="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></span>
-            Ouverture...
-          {:else}
-            <ExternalLink class="w-4 h-4" /> Ouvrir {item.type}
-          {/if}
+      {#if tmdbData?.cast?.length}
+        <div class="space-y-2">
+          <h3 class="text-sm font-semibold text-gray-300 uppercase tracking-wide">Casting principal</h3>
+          <div class="grid grid-cols-2 sm:grid-cols-4 gap-x-6 gap-y-3 text-xs sm:text-sm">
+            {#each tmdbData.cast.slice(0, 8) as actor}
+              <div>
+                <p class="text-gray-200">{actor.name}</p>
+                {#if actor.character}
+                  <p class="text-[11px] text-gray-400 italic">{actor.character}</p>
+                {/if}
+              </div>
+            {/each}
+          </div>
+        </div>
+      {/if}
+
+      <!-- Action buttons -->
+      <div class="flex flex-wrap justify-center sm:justify-end gap-3 mt-6">
+        <button class="flex items-center gap-2 bg-white text-black font-bold 
+                       px-6 py-2 rounded-lg hover:bg-gray-200 transition"
+                on:click={openArr}>
+          <ExternalLink class="w-5 h-5" /> Ouvrir {item.type === "radarr" ? "Radarr" : "Sonarr"}
         </button>
 
-        <!-- Bouton réparer -->
-        <button
-          class={`relative flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl font-semibold text-sm 
-                  bg-gradient-to-r ${buttonClasses(isBroken ? "repair-active" : "repair-disabled")} text-white
-                  hover:scale-105 focus:ring-2`}
-          on:click={repair}
-          disabled={!isBroken || loadingRepair}
-        >
-          {#if loadingRepair}
-            <span class="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></span>
-            Réparation...
-          {:else if isBroken}
-            <Wrench class="w-4 h-4" /> Réparer
-          {:else}
-            <ShieldCheck class="w-4 h-4" /> Réparer
-          {/if}
+        <button class="flex items-center gap-2 bg-emerald-600 text-white font-bold 
+                       px-6 py-2 rounded-lg hover:bg-emerald-700 transition disabled:opacity-50"
+                on:click={repair}
+                disabled={!isBroken || loadingRepair}>
+          <Wrench class="w-5 h-5" /> Réparer
         </button>
 
-        <!-- Bouton Seasonarr -->
         {#if item.type.toLowerCase() === "sonarr"}
-          <button
-            class={`relative flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl font-semibold text-sm 
-                    bg-gradient-to-r ${buttonClasses("seasonarr")} text-white
-                    hover:scale-105 focus:ring-2`}
-            on:click={openSeasonarr}
-            disabled={loadingSeasonarr}
-          >
-            {#if loadingSeasonarr}
-              <span class="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></span>
-              Seasonarr...
-            {:else}
-              <Tv class="w-4 h-4" /> Seasonarr
-            {/if}
+          <button class="flex items-center gap-2 bg-purple-600 text-white font-bold 
+                         px-6 py-2 rounded-lg hover:bg-purple-700 transition"
+                  on:click={openSeasonarr}
+                  disabled={loadingSeasonarr}>
+            <Tv class="w-5 h-5" /> Seasonarr
           </button>
         {/if}
       </div>
     </div>
+
+    {#if showTrailer}
+      <div class="fixed inset-0 z-[100] flex items-center justify-center bg-black/90">
+        <div class="relative w-full max-w-4xl aspect-video">
+          <iframe
+            src={tmdbData.trailer.replace("watch?v=", "embed/") +
+              (isFrenchTrailer ? "?autoplay=1" : "?autoplay=1&cc_load_policy=1&hl=fr")}
+            class="w-full h-full rounded-xl"
+            allow="autoplay; fullscreen"
+            title="Bande-annonce"
+          ></iframe>
+          <button class="absolute top-2 right-2 text-white text-2xl"
+                  on:click={() => showTrailer = false}>✖</button>
+        </div>
+      </div>
+    {/if}
   </section>
 </div>

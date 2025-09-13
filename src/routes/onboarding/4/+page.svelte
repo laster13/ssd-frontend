@@ -12,9 +12,9 @@
   formProgress.set(2);
 
   const linksDirs = writable<{ path: string; manager: string }[]>([]);
-  const mountDirs = writable<string[]>([]); // ✅ Ajouté
   const radarrApiKey = writable('');
   const sonarrApiKey = writable('');
+  const tmdbApiKey = writable('');
   const message = writable('');
   const discordWebhook = writable('');
   const saving = writable(false);
@@ -25,9 +25,9 @@
       if (res.ok) {
         const data = await res.json();
         linksDirs.set(data.links_dirs || []);
-        mountDirs.set(data.mount_dirs || []); // ✅ Ajout
         radarrApiKey.set(data.radarr_api_key || '');
         sonarrApiKey.set(data.sonarr_api_key || '');
+        tmdbApiKey.set(data.tmdb_api_key || '');
         discordWebhook.set(data.discord_webhook_url || '');
       } else {
         message.set('❌ Erreur lors du chargement de la configuration');
@@ -46,9 +46,9 @@
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           links_dirs: $linksDirs,
-          mount_dirs: $mountDirs, // ✅ Ajout
           radarr_api_key: $radarrApiKey,
           sonarr_api_key: $sonarrApiKey,
+          tmdb_api_key: $tmdbApiKey, 
           discord_webhook_url: $discordWebhook
         })
       });
@@ -69,13 +69,6 @@
   }
   function removeLinksDir(index: number) {
     linksDirs.update(dirs => dirs.filter((_, i) => i !== index));
-  }
-
-  function addMountDir() {
-    mountDirs.update(dirs => [...dirs, '']);
-  }
-  function removeMountDir(index: number) {
-    mountDirs.update(dirs => dirs.filter((_, i) => i !== index));
   }
 
   onMount(loadConfig);
@@ -140,38 +133,6 @@
         </button>
       </fieldset>
 
-      <!-- Dossiers montés -->
-      <fieldset class="space-y-4">
-        <legend class="legend-azure text-lg font-semibold">🗂️ Dossiers montés</legend>
-        {#each $mountDirs as mountDir, index (index)}
-          <div in:slide out:fade class="flex items-center gap-2 bg-white/70 dark:bg-gray-800/60 backdrop-blur p-3 rounded-lg shadow-md border border-gray-200 dark:border-gray-700">
-            <input
-              id={`mountDir-${index}`}
-              type="text"
-              bind:value={$mountDirs[index]}
-              placeholder="/home/ubuntu/alldebrid/torrents"
-              class="flex-1 rounded-lg border border-gray-300 dark:border-gray-600 bg-gray-50/80 dark:bg-gray-900/50 px-4 py-2 focus:outline-none focus:ring-2 focus:ring-emerald-500 transition"
-              required
-            />
-            <button
-              type="button"
-              on:click={() => removeMountDir(index)}
-              class="text-red-500 hover:text-red-600 transition-transform hover:scale-110"
-            >
-              <Trash2 class="w-5 h-5" />
-            </button>
-          </div>
-        {/each}
-
-        <button
-          type="button"
-          on:click={addMountDir}
-          class="mt-2 inline-flex items-center gap-2 px-4 py-2 rounded-lg border border-emerald-500 text-emerald-600 font-medium bg-white/60 dark:bg-gray-800/40 backdrop-blur hover:bg-emerald-50 dark:hover:bg-gray-800 transition"
-        >
-          <FolderPlus class="w-4 h-4" /> Ajouter un dossier monté
-        </button>
-      </fieldset>
-
       <!-- API Keys -->
       <fieldset class="space-y-6">
         <div>
@@ -196,6 +157,18 @@
             class="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-gray-50/80 dark:bg-gray-900/50 px-4 py-2 focus:outline-none focus:ring-2 focus:ring-emerald-500 transition"
             required
           />
+        </div>
+
+        <div>
+            <label for="tmdbApiKey" class="legend-azure">🔑 Clé API TMDB</label>
+            <input
+                id="tmdbApiKey"
+                type="text"
+                bind:value={$tmdbApiKey}
+                placeholder="TMDB ApiKey"
+                class="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-gray-50/80 dark:bg-gray-900/50 px-4 py-2 focus:outline-none focus:ring-2 focus:ring-emerald-500 transition"
+                required
+            />
         </div>
       </fieldset>
 

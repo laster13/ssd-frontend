@@ -5,9 +5,9 @@
   import { fade, slide } from 'svelte/transition';
 
   const linksDirs = writable([]);
-  const mountDirs = writable([]);
   const radarrApiKey = writable('');
   const sonarrApiKey = writable('');
+  const tmdbApiKey = writable('');
   const discordWebhook = writable('');
   const saving = writable(false);
 
@@ -24,9 +24,9 @@
       if (res.ok) {
         const data = await res.json();
         linksDirs.set(data.links_dirs || []);
-        mountDirs.set(data.mount_dirs || []);
         radarrApiKey.set(data.radarr_api_key || '');
         sonarrApiKey.set(data.sonarr_api_key || '');
+        tmdbApiKey.set(data.tmdb_api_key || '');
         discordWebhook.set(data.discord_webhook_url || ''); // ✅ Discord
       } else {
         showToast('❌ Erreur lors du chargement', 'error');
@@ -44,9 +44,9 @@
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           links_dirs: $linksDirs,
-          mount_dirs: $mountDirs,
           radarr_api_key: $radarrApiKey,
           sonarr_api_key: $sonarrApiKey,
+          tmdb_api_key: $tmdbApiKey,
           discord_webhook_url: $discordWebhook   // ✅ ajouté
         })
       });
@@ -69,14 +69,8 @@
     linksDirs.update(dirs => dirs.filter((_, i) => i !== index));
   }
 
-  function addMountDir() {
-    mountDirs.update(dirs => [...dirs, ""]);
-  }
-  function removeMountDir(index) {
-    mountDirs.update(dirs => dirs.filter((_, i) => i !== index));
-  }
-
   onMount(loadConfig);
+
 </script>
 
 <main class="w-full max-w-5xl mx-auto p-8 space-y-10">
@@ -141,30 +135,6 @@
       </button>
     </fieldset>
 
-    <!-- Dossiers montés -->
-    <fieldset class="space-y-4">
-      <legend class="legend-azure text-lg font-semibold">🗂️ Dossiers montés</legend>
-      <div class="space-y-3">
-        {#each $mountDirs as mountDir, index (index)}
-          <div in:fade out:fade class="flex items-center gap-3 
-              bg-white/70 dark:bg-gray-800/60 backdrop-blur-lg p-4 rounded-xl shadow 
-              border border-gray-200 dark:border-gray-700">
-            <input id={`mountDir-${index}`} type="text"
-              bind:value={$mountDirs[index]} placeholder="/home/ubuntu/alldebrid/torrents"
-              class="flex-1 input" required/>
-            <button type="button" on:click={() => removeMountDir(index)}
-              class="text-red-500 hover:text-red-600 hover:scale-110 transition">
-              <Trash2 class="w-5 h-5"/>
-            </button>
-          </div>
-        {/each}
-      </div>
-
-      <button type="button" on:click={addMountDir} class="btn-outline">
-        <FolderPlus class="w-4 h-4"/> Ajouter un dossier monté
-      </button>
-    </fieldset>
-
     <!-- API Keys -->
     <fieldset class="space-y-6">
       <legend class="legend-azure text-lg font-semibold">🔑 Clés API</legend>
@@ -176,6 +146,10 @@
         <div>
           <label for="sonarrApiKey" class="label">Sonarr API Key</label>
           <input id="sonarrApiKey" type="text" bind:value={$sonarrApiKey} class="input w-full" required/>
+        </div>
+        <div>
+          <label for="tmdbApiKey" class="label">TMDB API Key</label>
+          <input id="tmdbApiKey" type="text" bind:value={$tmdbApiKey} class="input w-full" required/>
         </div>
       </div>
     </fieldset>
