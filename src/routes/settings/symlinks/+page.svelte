@@ -223,7 +223,7 @@
             const params = new URLSearchParams({
                 sort: "created_at",
                 order: "desc",
-                limit: "10"
+                limit: "100"
             });
 
             if (searchTermVal.trim()) params.append("search", searchTermVal.trim());
@@ -687,55 +687,55 @@
         };
     });
 
-function connectSSE() {
-    const eventSource = new EventSource(`${baseURL}/api/v1/symlinks/events`);
+    function connectSSE() {
+        const eventSource = new EventSource(`${baseURL}/api/v1/symlinks/events`);
 
-    // On écoute spécifiquement les événements de type "symlink_update"
-    eventSource.addEventListener("symlink_update", async (event: MessageEvent) => {
-        try {
-            const payload = JSON.parse(event.data);
-            console.log('Événement SSE reçu:', payload); // Log l'événement reçu
+        // On écoute spécifiquement les événements de type "symlink_update"
+        eventSource.addEventListener("symlink_update", async (event: MessageEvent) => {
+            try {
+                const payload = JSON.parse(event.data);
+                console.log('Événement SSE reçu:', payload); // Log l'événement reçu
 
-            switch (payload.event) {
-                case "symlink_added":
-                    console.log('Symlink ajouté:', payload.item);  // Log de l'ajout du symlink
-                    symlinks.update(list => {
-                        if (!list.some(i => i.symlink === payload.item.symlink)) {
-                            return [payload.item, ...list];
-                        }
-                        return list;
-                    });
-                    totalItems.update(n => n + 1);
-                    break;
+                switch (payload.event) {
+                    case "symlink_added":
+                        console.log('Symlink ajouté:', payload.item);  // Log de l'ajout du symlink
+                        symlinks.update(list => {
+                            if (!list.some(i => i.symlink === payload.item.symlink)) {
+                                return [payload.item, ...list];
+                            }
+                            return list;
+                        });
+                        totalItems.update(n => n + 1);
+                        break;
 
-                case "symlink_removed":
-                    console.log('Symlink supprimé:', payload.path); // Log de la suppression du symlink
-                    symlinks.update(list =>
-                        list.filter(i => i.symlink !== payload.path)
-                    );
-                    totalItems.update(n => Math.max(0, n - 1));
-                    break;
+                    case "symlink_removed":
+                        console.log('Symlink supprimé:', payload.path); // Log de la suppression du symlink
+                        symlinks.update(list =>
+                            list.filter(i => i.symlink !== payload.path)
+                        );
+                        totalItems.update(n => Math.max(0, n - 1));
+                        break;
 
-                case "scan_completed":
-                    console.log('Scan terminé, rafraîchissement de la liste'); // Log de la fin du scan
-                    await refreshList();
-                    break;
+                    case "scan_completed":
+                        console.log('Scan terminé, rafraîchissement de la liste'); // Log de la fin du scan
+                        await refreshList();
+                        break;
+                }
+
+                // 🔄 garder la liste "latest" en cohérence
+                await loadLatestSymlinks();
+
+            } catch (err) {
+                console.error("❌ SSE parse error:", err);
             }
+        });
 
-            // 🔄 garder la liste "latest" en cohérence
-            await loadLatestSymlinks();
-
-        } catch (err) {
-            console.error("❌ SSE parse error:", err);
-        }
-    });
-
-    eventSource.onerror = () => {
-        console.error("❌ Erreur SSE, tentative de reconnexion...");
-        eventSource.close();
-        setTimeout(() => connectSSE(), 2000); // reconnexion auto
-    };
-}
+        eventSource.onerror = () => {
+            console.error("❌ Erreur SSE, tentative de reconnexion...");
+            eventSource.close();
+            setTimeout(() => connectSSE(), 2000); // reconnexion auto
+        };
+    }
 
 </script>
 
@@ -934,7 +934,7 @@ function connectSSE() {
                    dark:from-indigo-400 dark:via-purple-400 dark:to-pink-400
                    bg-clip-text text-transparent"
           >
-            Derniers symlinks
+            Derniers symlinks ajoutés
           </span>
         </button>
 
@@ -1102,7 +1102,7 @@ function connectSSE() {
       <span class="text-sm md:text-base lg:text-lg 
                    bg-gradient-to-r from-indigo-400 via-purple-400 to-pink-500 
                    bg-clip-text text-transparent">
-        10 Derniers symlinks ajoutés
+        100 Derniers symlinks ajoutés
       </span>
     </div>
 
