@@ -2,7 +2,7 @@
   import { createEventDispatcher, onMount, onDestroy } from "svelte";
   import { fade, fly, scale } from "svelte/transition";
   import { cubicOut } from "svelte/easing";
-  import { ExternalLink, Wrench, Tv, X, Play } from "lucide-svelte";
+  import { ExternalLink, Wrench, Tv, X, Play, Loader2 } from "lucide-svelte"; // ✅ ajout Loader2
 
   const baseURL = import.meta.env.DEV
     ? import.meta.env.VITE_BACKEND_URL_HTTP
@@ -24,6 +24,7 @@
   let loadingOpen = false;
   let loadingRepair = false;
   let loadingSeasonarr = false;
+  let loadingTrailer = false; // ✅ ajout
 
   const isBroken = item.ref_count === 0 || item.target_exists === false;
 
@@ -187,17 +188,24 @@
 
 <div
   class="fixed inset-0 z-50 flex items-center justify-center bg-black/80"
+  role="button"
+  tabindex="0"
+  aria-label="Fermer la popup"
   on:click={close}
+  on:keydown={(e) => (e.key === 'Enter' || e.key === ' ') && close()}
   in:fade={{ duration: 250 }}
   out:fade={{ duration: 200 }}
 >
   <section
+    role="presentation"
     class="relative w-full max-w-6xl h-[95vh] mx-auto
            bg-black rounded-3xl shadow-2xl overflow-hidden"
     on:click|stopPropagation
     transition:flyAndScale={{ duration: 250 }}
   >
+    <!-- Bouton de fermeture -->
     <button
+      type="button"
       class="absolute top-4 right-4 z-50 text-white hover:text-gray-300 hover:scale-110 transition"
       on:click={close}
       aria-label="Fermer"
@@ -208,7 +216,11 @@
     <!-- Backdrop -->
     <div class="absolute inset-0 w-full h-full">
       {#if backdropUrl}
-        <img src={backdropUrl} alt="Backdrop" class="absolute inset-0 w-full h-full object-cover" />
+        <img
+          src={backdropUrl}
+          alt="Backdrop"
+          class="absolute inset-0 w-full h-full object-cover"
+        />
       {/if}
       <div class="absolute inset-0 bg-gradient-to-t from-black via-black/70 to-transparent"></div>
     </div>
@@ -218,13 +230,21 @@
       <div class="flex flex-col sm:flex-row gap-6 sm:gap-10 items-center sm:items-start">
         {#if posterUrl}
           <div class="w-32 sm:w-48 flex-shrink-0">
-            <img src={posterUrl} alt="Poster" class="w-full aspect-[2/3] object-cover rounded-2xl shadow-2xl" />
+            <img
+              src={posterUrl}
+              alt="Poster"
+              class="w-full aspect-[2/3] object-cover rounded-2xl shadow-2xl"
+            />
           </div>
         {/if}
 
         <div class="flex flex-col gap-4 sm:gap-6 text-center sm:text-left max-w-2xl">
           {#if logoUrl}
-            <img src={logoUrl} alt="Logo" class="h-12 sm:h-20 object-contain mx-auto sm:mx-0" />
+            <img
+              src={logoUrl}
+              alt="Logo"
+              class="h-12 sm:h-20 object-contain mx-auto sm:mx-0"
+            />
           {:else}
             {#if loadingTitle}
               <div class="h-8 sm:h-12 w-48 sm:w-72 rounded-md 
@@ -232,8 +252,10 @@
                           animate-pulse mx-auto sm:mx-0"></div>
             {:else}
               {#if tmdbData?.title || sonarrData?.title}
-                <h2 transition:fadeAndScale={{ duration: 400 }}
-                    class="text-2xl sm:text-4xl font-extrabold drop-shadow-lg">
+                <h2
+                  transition:fadeAndScale={{ duration: 400 }}
+                  class="text-2xl sm:text-4xl font-extrabold drop-shadow-lg"
+                >
                   {tmdbData?.title || sonarrData?.title}
                 </h2>
               {:else}
@@ -246,7 +268,9 @@
 
           <div class="flex flex-wrap justify-center sm:justify-start gap-2 sm:gap-3 text-xs sm:text-sm">
             {#if item.year || tmdbData?.year}
-              <span class="px-2 sm:px-3 py-1 rounded-full bg-white/20">📅 {item.year || tmdbData.year}</span>
+              <span class="px-2 sm:px-3 py-1 rounded-full bg-white/20">
+                📅 {item.year || tmdbData.year}
+              </span>
             {/if}
             {#if item.rating || tmdbData?.rating}
               <span class="px-2 sm:px-3 py-1 rounded-full bg-yellow-500/80">
@@ -269,22 +293,41 @@
             <p class="text-sm sm:text-base text-gray-200 leading-relaxed">
               {#if showFullOverview}
                 {tmdbData.overview}
-                <button class="ml-2 text-indigo-300 underline"
-                        on:click={() => showFullOverview = false}>moins</button>
+                <button
+                  type="button"
+                  class="ml-2 text-indigo-300 underline"
+                  on:click={() => showFullOverview = false}
+                >
+                  moins
+                </button>
               {:else}
                 {tmdbData.overview.slice(0, 200)}...
-                <button class="ml-2 text-indigo-300 underline"
-                        on:click={() => showFullOverview = true}>plus</button>
+                <button
+                  type="button"
+                  class="ml-2 text-indigo-300 underline"
+                  on:click={() => showFullOverview = true}
+                >
+                  plus
+                </button>
               {/if}
             </p>
           {/if}
 
           {#if tmdbData?.trailer}
-            <button class="inline-flex items-center gap-2 bg-red-600 text-white font-bold 
-                           px-3 py-1.5 rounded-md hover:bg-red-700 transition mt-2 text-sm 
-                           w-fit mx-auto sm:mx-0"
-                    on:click={() => showTrailer = true}>
-              <Play class="w-4 h-4" /> Bande-annonce
+            <button
+              type="button"
+              class="inline-flex items-center gap-2 bg-red-600 text-white font-bold 
+                     px-3 py-1.5 rounded-md hover:bg-red-700 transition mt-2 text-sm 
+                     w-fit mx-auto sm:mx-0 disabled:opacity-50"
+              on:click={() => { loadingTrailer = true; showTrailer = true; setTimeout(() => loadingTrailer = false, 800); }}
+              disabled={loadingTrailer}
+            >
+              {#if loadingTrailer}
+                <Loader2 class="w-4 h-4 animate-spin" />
+                Chargement...
+              {:else}
+                <Play class="w-4 h-4" /> Bande-annonce
+              {/if}
             </button>
           {/if}
         </div>
@@ -292,7 +335,9 @@
 
       {#if tmdbData?.cast?.length}
         <div class="space-y-2">
-          <h3 class="text-sm font-semibold text-gray-300 uppercase tracking-wide">Casting principal</h3>
+          <h3 class="text-sm font-semibold text-gray-300 uppercase tracking-wide">
+            Casting principal
+          </h3>
           <div class="grid grid-cols-2 sm:grid-cols-4 gap-x-6 gap-y-3 text-xs sm:text-sm">
             {#each tmdbData.cast.slice(0, 8) as actor}
               <div>
@@ -308,32 +353,61 @@
 
       <!-- Action buttons -->
       <div class="flex flex-wrap justify-center sm:justify-end gap-3 mt-6">
-        <button class="flex items-center gap-2 bg-white text-black font-bold 
-                       px-6 py-2 rounded-lg hover:bg-gray-200 transition"
-                on:click={openArr}>
-          <ExternalLink class="w-5 h-5" /> Ouvrir {item.type === "radarr" ? "Radarr" : "Sonarr"}
+        <!-- Open Arr -->
+        <button
+          type="button"
+          class="flex items-center gap-2 bg-white text-black font-bold 
+                 px-6 py-2 rounded-lg hover:bg-gray-200 transition disabled:opacity-50"
+          on:click={openArr}
+          disabled={loadingOpen}
+        >
+          {#if loadingOpen}
+            <Loader2 class="w-5 h-5 animate-spin" /> Ouverture...
+          {:else}
+            <ExternalLink class="w-5 h-5" /> Ouvrir {item.type === "radarr" ? "Radarr" : "Sonarr"}
+          {/if}
         </button>
 
-        <button class="flex items-center gap-2 bg-emerald-600 text-white font-bold 
-                       px-6 py-2 rounded-lg hover:bg-emerald-700 transition disabled:opacity-50"
-                on:click={repair}
-                disabled={!isBroken || loadingRepair}>
-          <Wrench class="w-5 h-5" /> Réparer
+        <!-- Repair -->
+        <button
+          type="button"
+          class="flex items-center gap-2 bg-emerald-600 text-white font-bold 
+                 px-6 py-2 rounded-lg hover:bg-emerald-700 transition disabled:opacity-50"
+          on:click={repair}
+          disabled={!isBroken || loadingRepair}
+        >
+          {#if loadingRepair}
+            <Loader2 class="w-5 h-5 animate-spin" /> Réparation...
+          {:else}
+            <Wrench class="w-5 h-5" /> Réparer
+          {/if}
         </button>
 
+        <!-- Seasonarr -->
         {#if item.type.toLowerCase() === "sonarr"}
-          <button class="flex items-center gap-2 bg-purple-600 text-white font-bold 
-                         px-6 py-2 rounded-lg hover:bg-purple-700 transition"
-                  on:click={openSeasonarr}
-                  disabled={loadingSeasonarr}>
-            <Tv class="w-5 h-5" /> Seasonarr
+          <button
+            type="button"
+            class="flex items-center gap-2 bg-purple-600 text-white font-bold 
+                   px-6 py-2 rounded-lg hover:bg-purple-700 transition disabled:opacity-50"
+            on:click={openSeasonarr}
+            disabled={loadingSeasonarr}
+          >
+            {#if loadingSeasonarr}
+              <Loader2 class="w-5 h-5 animate-spin" /> Ouverture...
+            {:else}
+              <Tv class="w-5 h-5" /> Seasonarr
+            {/if}
           </button>
         {/if}
       </div>
     </div>
 
     {#if showTrailer}
-      <div class="fixed inset-0 z-[100] flex items-center justify-center bg-black/90">
+      <div
+        class="fixed inset-0 z-[100] flex items-center justify-center bg-black/90"
+        role="dialog"
+        aria-modal="true"
+      >
         <div class="relative w-full max-w-4xl aspect-video">
           <iframe
             src={tmdbData.trailer.replace("watch?v=", "embed/") +
@@ -342,8 +416,14 @@
             allow="autoplay; fullscreen"
             title="Bande-annonce"
           ></iframe>
-          <button class="absolute top-2 right-2 text-white text-2xl"
-                  on:click={() => showTrailer = false}>✖</button>
+          <button
+            type="button"
+            class="absolute top-2 right-2 text-white text-2xl"
+            on:click={() => showTrailer = false}
+            aria-label="Fermer la bande-annonce"
+          >
+            ✖
+          </button>
         </div>
       </div>
     {/if}
