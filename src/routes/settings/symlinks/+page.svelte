@@ -7,10 +7,11 @@
   import SymlinkCard from "$lib/components/SymlinkCard.svelte";
   import ActionButton from "$lib/components/ActionButton.svelte";
   import ToggleLatest from "$lib/components/ToggleLatest.svelte";
+  import PopupRename from "$lib/components/PopupRename.svelte";
 
   import {
     FolderSearch, ChevronDown, Search, Sparkles, FolderOpen, Trash,
-    RefreshCw, Info, Scan, Filter, Trash2, Loader2, CheckCircle2, Tv
+    RefreshCw, Info, Scan, Filter, Lightbulb, Trash2, Loader2, CheckCircle2, Tv
   } from "lucide-svelte";
 
   import {
@@ -20,7 +21,7 @@
     refreshing, refreshSuccess, scanning, scanSuccess,
     deleting, deleteSuccess, selectedDir, availableDirs,
     bulkDeleting, bulkDeleteSuccess, repairing, repairSuccess,
-    selectedItem, allBrokenCount,
+    selectedItem, allBrokenCount, imdbMissing, renaming, renameSuccess,
     duplicates, hasDuplicates, duplicatesCount, latestSymlinks, activeFilter
   } from "$lib/stores/symlinks";
 
@@ -29,6 +30,12 @@
     triggerScanAPI, repairMissingSeasonsAPI, deleteBrokenAPI, deleteSymlinkAPI,
     fetchSonarrUrl, fetchRadarrUrl, exportSymlinksToFile, importSymlinksFromFile
   } from "$lib/api/symlinks";
+
+  let open = ""; // stocke la carte ouverte
+
+  function toggle(card: string) {
+    open = open === card ? "" : card;
+  }
 
   // --- Variables locales ---
   const baseURL = import.meta.env.DEV
@@ -41,6 +48,7 @@
   let ascending = true;
   let mounted = false;
   let filtersReady = false;
+  let showRenamePopup = false;
 
   let searchTerm = '';
   $: searchTerm = $search.trim();
@@ -61,6 +69,18 @@
   }
   function s(count: number) {
     return count > 1 ? 's' : '';
+  }
+
+// --- Renommage global ---
+  async function handleRename(type: string) {
+    // ⚡ Ici tu choisis quel endpoint taper selon le type
+    if (type === "radarr") {
+      console.log("🔥 Appel API Radarr rename");
+    } else if (type === "sonarr") {
+      console.log("🔥 Appel API Sonarr rename");
+    } else {
+      await onRename(); // ton endpoint global déjà en place
+    }
   }
 
   // --- Open popup (Radarr / Sonarr show details) ---
@@ -100,6 +120,19 @@
   function goToPage(p: number) {
     currentPage.set(p);
     refreshList();
+  }
+
+  async function loadLibraries() {
+    try {
+      const res = await fetch(`${baseURL}/api/v1/symlinks/libraries`);
+      if (!res.ok) throw new Error("Erreur API libraries");
+      const data = await res.json();
+      const totalMissing = (data.movies?.imdb_missing || 0) + (data.shows?.imdb_missing || 0);
+      imdbMissing.set(totalMissing);
+    } catch (err) {
+      console.error("❌ Erreur loadLibraries:", err);
+      imdbMissing.set(0);
+    }
   }
 
   // --- Open in Arr (Sonarr / Radarr) ---
@@ -298,103 +331,110 @@
   }
 
 // --- Refresh ---
-async function refreshList() {
-  refreshing.set(true);
-  refreshSuccess.set(false);
+  async function refreshList() {
+    refreshing.set(true);
+    refreshSuccess.set(false);
 
-  try {
-    const page = get(currentPage);
-    const limit = get(rowsPerPage);
-    const sort = sortedColumn || "symlink";
-    const order = ascending ? "asc" : "desc";
+    try {
+      const page = get(currentPage);
+      const limit = get(rowsPerPage);
+      const sort = sortedColumn || "symlink";
+      const order = ascending ? "asc" : "desc";
 
-    const params = new URLSearchParams({
-      page: String(page),
-      limit: String(limit),
-      sort,
-      order,
-    });
+      const params = new URLSearchParams({
+        page: String(page),
+        limit: String(limit),
+        sort,
+        order,
+      });
 
-    if (searchTerm.trim()) {
-      params.append("search", searchTerm.trim());
-    }
+      if (searchTerm.trim()) {
+        params.append("search", searchTerm.trim());
+      }
 
-    if (get(selectedDir)) {
-      params.append("folder", get(selectedDir));
-    }
+      if (get(selectedDir)) {
+        params.append("folder", get(selectedDir));
+      }
 
-    let json: any;
+      let json: any;
 
-    // ✅ Gestion des filtres côté backend
-    switch (get(activeFilter)) {
-      case "orphans":
-        params.append("orphans", "true");
-        json = await fetchSymlinks(params);
-        symlinks.set(json.data);
-        break;
+      // ✅ Gestion des filtres côté backend
+      switch (get(activeFilter)) {
+        case "orphans":
+          params.append("orphans", "true");
+          json = await fetchSymlinks(params);
+          symlinks.set(json.data || []);
+          break;
 
-      case "duplicates": {
-        const dupRes = await fetch(`${baseURL}/api/v1/symlinks/duplicates?${params}`);
+        case "duplicates": {
+          const dupRes = await fetch(`${baseURL}/api/v1/symlinks/duplicates?${params}`);
+          if (dupRes.ok) {
+            const dupJson = await dupRes.json();
+            symlinks.set(dupJson.data || []);
+            json = { total: dupJson.total || dupJson.data?.length || 0 };
+          } else {
+            symlinks.set([]);
+            json = { total: 0 };
+          }
+          break;
+        }
+
+        case "latest":
+          params.set("sort", "created_at");
+          params.set("order", "desc");
+          params.set("limit", "100");
+          json = await fetchLatestSymlinks(params);
+          symlinks.set(json.data || []);
+          break;
+
+        case "rename":
+          params.append("rename", "true");
+          json = await fetchSymlinks(params);
+          symlinks.set(json.data || []);
+          break;
+
+        default: // 'none'
+          json = await fetchSymlinks(params);
+          symlinks.set(json.data || []);
+          break;
+      }
+
+      // ✅ Mise à jour des compteurs globaux
+      totalItems.set(json.total || 0);
+      orphaned.set(json.orphaned || 0);
+      allBrokenCount.set(json.all_broken || 0);
+      uniqueTargets.set(json.unique_targets || 0);
+      imdbMissing.set(json.imdb_missing || 0); // 👈 compteur à renommer
+
+      // ✅ Appel séparé pour doublons (compteur bouton)
+      try {
+        const dupParams = new URLSearchParams();
+        if (get(selectedDir)) {
+          dupParams.append("folder", get(selectedDir));
+        }
+
+        const dupRes = await fetch(`${baseURL}/api/v1/symlinks/duplicates?${dupParams}`);
         if (dupRes.ok) {
           const dupJson = await dupRes.json();
-          symlinks.set(dupJson.data || []);
-          json = { total: dupJson.total || dupJson.data?.length || 0 };
+          duplicates.set(dupJson.data || []);
+          duplicatesCount.set(dupJson.total || (dupJson.data?.length || 0));
         } else {
-          symlinks.set([]);
-          json = { total: 0 };
+          duplicates.set([]);
+          duplicatesCount.set(0);
         }
-        break;
-      }
-
-      case "latest":
-        params.set("sort", "created_at");
-        params.set("order", "desc");
-        params.set("limit", "100");
-        json = await fetchLatestSymlinks(params);
-        symlinks.set(json.data || []);
-        break;
-
-      default: // 'none'
-        json = await fetchSymlinks(params);
-        symlinks.set(json.data);
-        break;
-    }
-
-    // ✅ Mise à jour des compteurs globaux
-    totalItems.set(json.total || 0);
-    orphaned.set(json.orphaned || 0);
-    allBrokenCount.set(json.orphaned || 0);
-    uniqueTargets.set(json.unique_targets || 0);
-
-    // ✅ Appel séparé pour doublons (compteur bouton)
-    try {
-      const dupParams = new URLSearchParams();
-      if (get(selectedDir)) {
-        dupParams.append("folder", get(selectedDir));
-      }
-
-      const dupRes = await fetch(`${baseURL}/api/v1/symlinks/duplicates?${dupParams}`);
-      if (dupRes.ok) {
-        const dupJson = await dupRes.json();
-        duplicates.set(dupJson.data || []);
-        duplicatesCount.set(dupJson.total || (dupJson.data?.length || 0));
-      } else {
+      } catch (err) {
+        console.error("❌ Erreur récupération doublons :", err);
         duplicates.set([]);
         duplicatesCount.set(0);
       }
-    } catch (err) {
-      console.error("❌ Erreur récupération doublons :", err);
-      duplicates.set([]);
-      duplicatesCount.set(0);
-    }
 
-    logs.update((l) => [`Liste rafraîchie (page ${page})`, ...l]);
-    refreshSuccess.set(true);
-    setTimeout(() => refreshSuccess.set(false), 2000);
-  } finally {
-    refreshing.set(false);
+      logs.update((l) => [`Liste rafraîchie (page ${page})`, ...l]);
+      refreshSuccess.set(true);
+      setTimeout(() => refreshSuccess.set(false), 2000);
+    } finally {
+      refreshing.set(false);
+    }
   }
-}
 
   // --- Delete filtrés ---
   async function deleteFilteredSymlinks() {
@@ -457,6 +497,7 @@ async function refreshList() {
     mounted = true;
     await loadAvailableDirs();
     await refreshList();
+    await loadLibraries();
     filtersReady = true;
     connectSSE();
   });
@@ -494,6 +535,7 @@ async function refreshList() {
         // ✅ Après chaque event, on recharge la vérité depuis le backend
         await loadLatestSymlinks();
         await refreshList();
+        await loadLibraries();
       } catch (err) {
         console.error("❌ SSE parse error:", err);
       }
@@ -510,7 +552,6 @@ async function refreshList() {
 
 <main class="w-full min-h-screen p-4 sm:p-6 md:p-8 space-y-6 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-200">
 <div class="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-4">
-
   <!-- ☕ Menu mobile -->
   <div class="md:hidden relative">
     <details class="relative w-full">
@@ -527,6 +568,44 @@ async function refreshList() {
         <ChevronDown class="w-4 h-4 opacity-80 transition-transform duration-200 group-open:rotate-180" />
       </summary>
 
+        {#if $imdbMissing > 0}
+          <button
+            type="button"
+            class="w-full inline-flex items-center gap-3 px-4 py-2 rounded-lg border
+                   border-pink-200 dark:border-pink-700 
+                   bg-pink-50 dark:bg-pink-900/40 shadow-sm
+                   hover:shadow-md transition-all duration-300
+                   cursor-pointer"
+            on:click={() => {
+              activeFilter.set($activeFilter === 'rename' ? 'none' : 'rename');
+              refreshList();
+            }}
+          >
+            <label class="relative inline-flex items-center cursor-pointer select-none">
+              <input type="checkbox" checked={$activeFilter === 'rename'} class="sr-only peer" />
+              <div class="w-12 h-6 rounded-full transition-all duration-500
+                          bg-gradient-to-r from-gray-200 to-gray-400 
+                          dark:from-gray-700 dark:to-gray-900
+                          peer-checked:from-pink-500 peer-checked:to-rose-600
+                          shadow-inner peer-checked:shadow-[0_0_8px_rgba(236,72,153,0.5)]"></div>
+              <div class="absolute left-0.5 top-0.5 w-5 h-5 rounded-full 
+                          bg-white dark:bg-gray-100 flex items-center justify-center
+                          transition-all duration-500 ease-in-out
+                          peer-checked:translate-x-6 peer-checked:rotate-[360deg]
+                          shadow-md group-hover:scale-110">
+                {#if $activeFilter === 'rename'} 🎬 {:else} 🎞️ {/if}
+              </div>
+            </label>
+            <span class="text-sm font-medium tracking-wide 
+                         bg-gradient-to-r from-pink-600 to-rose-600 
+                         dark:from-pink-400 dark:to-rose-400
+                         bg-clip-text text-transparent">
+              {$activeFilter === 'rename' 
+                ? `À renommer uniquement (${$imdbMissing})` 
+                : `À renommer (${$imdbMissing})`}
+            </span>
+          </button>
+        {/if}
       <div
         class="absolute z-10 mt-1 bg-white dark:bg-gray-800 
                border border-gray-300 dark:border-gray-600 
@@ -752,6 +831,45 @@ async function refreshList() {
 
   <!-- 👈 Boutons desktop gauche -->
   <div class="hidden md:flex flex-wrap gap-2 items-center">
+
+    {#if $imdbMissing > 0}
+        <button
+            type="button"
+            class="inline-flex items-center gap-3 px-4 py-2 rounded-lg border
+                   border-pink-200 dark:border-pink-700 
+                   bg-pink-50 dark:bg-pink-900/40 shadow-sm
+                   hover:shadow-md transition-all duration-300
+                   cursor-pointer"
+            on:click={() => {
+                activeFilter.set($activeFilter === 'rename' ? 'none' : 'rename');
+                refreshList();
+            }}
+        >
+            <label class="relative inline-flex items-center cursor-pointer select-none">
+                <input type="checkbox" checked={$activeFilter === 'rename'} class="sr-only peer" />
+                <div class="w-12 h-6 rounded-full transition-all duration-500
+                            bg-gradient-to-r from-gray-200 to-gray-400 
+                            dark:from-gray-700 dark:to-gray-900
+                            peer-checked:from-pink-500 peer-checked:to-rose-600
+                            shadow-inner peer-checked:shadow-[0_0_8px_rgba(236,72,153,0.5)]"></div>
+                <div class="absolute left-0.5 top-0.5 w-5 h-5 rounded-full 
+                            bg-white dark:bg-gray-100 flex items-center justify-center
+                            transition-all duration-500 ease-in-out
+                            peer-checked:translate-x-6 peer-checked:rotate-[360deg]
+                            shadow-md group-hover:scale-110">
+                    {#if $activeFilter === 'rename'} 🎬 {:else} 🎞️ {/if}
+                </div>
+            </label>
+            <span class="text-sm font-medium tracking-wide 
+                         bg-gradient-to-r from-pink-600 to-rose-600 
+                         dark:from-pink-400 dark:to-rose-400
+                         bg-clip-text text-transparent">
+                {$activeFilter === 'rename' 
+                    ? `À renommer uniquement (${$imdbMissing})` 
+                    : `À renommer (${$imdbMissing})`}
+            </span>
+        </button>
+    {/if}
 
 <!-- ✅ Bouton Seasonarr -->
       <button
@@ -1081,6 +1199,130 @@ async function refreshList() {
       </select>
     </div>
   </div>
+
+  {#if $activeFilter === 'rename'}
+  <div class="flex items-center gap-6 mt-8">
+    <!-- 💡 Tips avec bulle -->
+    <div class="relative inline-block group">
+      <div class="flex items-center gap-2 cursor-pointer">
+        <!-- Ampoule premium -->
+        <span class="relative flex items-center justify-center">
+          <Lightbulb 
+            class="w-7 h-7 text-yellow-400 drop-shadow-[0_0_6px_rgba(250,204,21,0.8)]" 
+          />
+          <!-- Glow scintillant -->
+          <span class="absolute inline-flex h-8 w-8 rounded-full 
+                       bg-yellow-300 opacity-60 animate-ping"></span>
+        </span>
+        <span class="font-semibold text-sm text-gray-700 dark:text-gray-200">Tips</span>
+      </div>
+
+      <!-- Bulle affichée au hover -->
+      <div
+        class="absolute left-0 mt-3 hidden w-96 p-4 rounded-xl shadow-lg 
+               bg-yellow-50 text-gray-800 text-xs leading-relaxed
+               dark:bg-[#3a372e] dark:text-gray-200
+               group-hover:block transition-all duration-300 z-50"
+      >
+        <p class="mb-2 font-semibold text-gray-900 dark:text-gray-100">
+          Plex attend un format standard :
+        </p>
+
+        <p class="mb-2 flex items-center gap-2">
+          🎬 <span>Films → 
+            <code class="font-mono px-1 rounded bg-yellow-100/70 dark:bg-yellow-800/50 text-gray-800 dark:text-yellow-100">
+              Titre (Année)/Titre (Année).mkv
+            </code>
+          </span>
+        </p>
+
+        <p class="mb-3 flex items-center gap-2">
+          📺 <span>Séries → 
+            <code class="font-mono px-1 rounded bg-yellow-100/70 dark:bg-yellow-800/50 text-gray-800 dark:text-yellow-100">
+              Nom (Année)/Season 01/Nom (Année) - S01E01.mkv
+            </code>
+          </span>
+        </p>
+
+        <p class="mt-2 flex items-start gap-2">
+          👉 <span>
+            Utiliser un format clair pour les symlinks et leur ajouter 
+            <code class="font-mono px-1 rounded bg-yellow-100/70 dark:bg-yellow-800/50 text-gray-800 dark:text-yellow-100">
+              &lbrace;imdb-tt1234567&rbrace;
+            </code><br />
+            <span class="font-semibold bg-gradient-to-r from-amber-500 to-yellow-500 bg-clip-text text-transparent">
+              assure une reconnaissance parfaite
+            </span> 
+            pour Plex, Radarr, Sonarr et les API du projet.
+          </span>
+        </p>
+      </div>
+    </div>
+
+    <!-- 🚀 Bouton premium qui ouvre le popup -->
+    <button
+      type="button"
+      class="inline-flex items-center gap-3 px-4 py-2 rounded-lg border
+             border-pink-200 dark:border-pink-700 
+             bg-pink-50 dark:bg-pink-900/40 shadow-sm
+             hover:shadow-md transition-all duration-300
+             cursor-pointer"
+      on:click={() => showRenamePopup = true}
+    >
+        <span class="text-lg">🎬</span>
+        <span class="text-sm font-medium tracking-wide 
+                     bg-gradient-to-r from-pink-600 to-rose-600 
+                     dark:from-pink-400 dark:to-rose-400
+                     bg-clip-text text-transparent">
+          Options de nommage
+        </span>
+    </button>
+  </div>
+
+  <!-- 📌 Intégration du popup -->
+  {#if showRenamePopup}
+    <PopupRename
+      onClose={() => showRenamePopup = false}
+      onRename={handleRename}
+    />
+  {/if}
+{/if}
+
+  {#if $activeFilter === 'orphans'}
+    <div class="flex items-center gap-6 mt-8">
+      <!-- 🚀 Bouton premium pour tout réparer -->
+      <button
+        type="button"
+        class="inline-flex items-center gap-3 px-4 py-2 rounded-lg border
+               border-emerald-200 dark:border-emerald-700 
+               bg-emerald-50 dark:bg-emerald-900/40 shadow-sm
+               hover:shadow-md transition-all duration-300
+               cursor-pointer disabled:opacity-50"
+        on:click={deleteAllBrokenSymlinks}
+        disabled={$bulkDeleting}
+      >
+        {#if $bulkDeleting}
+          <Loader2 class="w-5 h-5 animate-spin text-emerald-600 dark:text-emerald-300" />
+          <span class="text-sm font-medium text-emerald-600 dark:text-emerald-300">
+            Réparation en cours...
+          </span>
+        {:else if $bulkDeleteSuccess}
+          <CheckCircle2 class="w-5 h-5 text-green-600 dark:text-green-400" />
+          <span class="text-sm font-medium text-green-600 dark:text-green-400">
+            Réparé !
+          </span>
+        {:else}
+          <span class="text-lg">🛠️</span>
+          <span class="text-sm font-medium tracking-wide 
+                       bg-gradient-to-r from-emerald-600 to-green-600 
+                       dark:from-emerald-400 dark:to-green-400
+                       bg-clip-text text-transparent">
+            Tout réparer
+          </span>
+        {/if}
+      </button>
+    </div>
+  {/if}
 
 <!-- Liste des symlinks -->
 {#if $activeFilter === 'latest'}

@@ -12,7 +12,7 @@ export const totalItems = writable(0);
 export const orphaned = writable(0);
 export const uniqueTargets = writable(0);
 export const duplicatesCount = writable(0);
-
+export const imdbMissing = writable(0);
 
 export const exporting = writable(false);
 export const exportSuccess = writable(false);
@@ -79,3 +79,16 @@ export const visibleSymlinks = derived(
     }
   }
 );
+
+export const renaming = writable({
+  radarr: false,
+  sonarr: false,
+  global: false,
+});
+
+export const renameSuccess = writable({
+  radarr: false,
+  sonarr: false,
+  global: false,
+});
+

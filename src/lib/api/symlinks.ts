@@ -121,3 +121,38 @@ export function importSymlinksFromFile(file: File): Promise<any[]> {
     reader.readAsText(file);
   });
 }
+
+// --- Renommage (Radarr / Sonarr / Global) ---
+
+/**
+ * Scan et renomme les films via Radarr
+ * @param dryRun true = simulation, false = exécution réelle
+ */
+export async function scanMoviesAPI(dryRun: boolean = true) {
+  const res = await fetch(
+    `${baseURL}/api/v1/symlinks/movies/scan?dry_run=${dryRun}`,
+    { method: "POST" }
+  );
+  return handleResponse(res);
+}
+
+/**
+ * Scan et renomme les séries via Sonarr
+ * @param dryRun true = simulation, false = exécution réelle
+ */
+export async function scanSeriesAPI(dryRun: boolean = true) {
+  const res = await fetch(
+    `${baseURL}/api/v1/symlinks/series/scan?dry_run=${dryRun}`,
+    { method: "POST" }
+  );
+  return handleResponse(res);
+}
+
+/**
+ * Scan global des bibliothèques (movies + séries)
+ */
+export async function scanLibrariesAPI() {
+  const res = await fetch(`${baseURL}/api/v1/symlinks/libraries`);
+  return handleResponse(res);
+}
+
