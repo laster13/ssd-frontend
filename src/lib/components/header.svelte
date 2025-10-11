@@ -14,7 +14,9 @@
     { name: 'Accueil', path: '/' },
     { name: 'Sauvegardes', path: '/settings/sauvegarde' },
     { name: 'Symlinks', path: '/settings/symlinks' },
+    { name: 'Seasonarr', path: '/season/dashboard' },
     { name: 'Paramètres', path: '/settings' }
+
   ];
 
   const settingsItems = [

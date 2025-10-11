@@ -4,20 +4,24 @@
   import { Save, Loader2, Trash2, FolderPlus, CheckCircle2, XCircle, BellRing } from 'lucide-svelte';
   import { fade, slide } from 'svelte/transition';
 
+  // === STORES ===
   const linksDirs = writable([]);
   const radarrApiKey = writable('');
   const sonarrApiKey = writable('');
   const tmdbApiKey = writable('');
   const discordWebhook = writable('');
-  const saving = writable(false);
+  const alldebridInstances = writable([]);
 
-  // ✅ Toast system
+  const saving = writable(false);
   const toast = writable(null);
-  function showToast(msg, type = "success") {
+
+  // === TOAST SYSTEM ===
+  function showToast(msg, type = 'success') {
     toast.set({ msg, type });
     setTimeout(() => toast.set(null), 3000);
   }
 
+  // === CHARGEMENT DE LA CONFIG ===
   async function loadConfig() {
     try {
       const res = await fetch('/api/v1/symlinks/config');
@@ -27,34 +31,44 @@
         radarrApiKey.set(data.radarr_api_key || '');
         sonarrApiKey.set(data.sonarr_api_key || '');
         tmdbApiKey.set(data.tmdb_api_key || '');
-        discordWebhook.set(data.discord_webhook_url || ''); // ✅ Discord
-      } else {
-        showToast('❌ Erreur lors du chargement', 'error');
+        discordWebhook.set(data.discord_webhook_url || '');
+      }
+
+      // 🔹 Charge aussi les instances AllDebrid
+      const alldebridRes = await fetch('/api/v1/instances/alldebrid');
+      if (alldebridRes.ok) {
+        alldebridInstances.set(await alldebridRes.json());
       }
     } catch {
       showToast('🌐 Erreur réseau', 'error');
     }
   }
 
+  // === SAUVEGARDE CONFIG (fusion complète) ===
   async function saveConfig() {
     saving.set(true);
     try {
+      const currentRes = await fetch('/api/v1/symlinks/config');
+      const currentData = currentRes.ok ? await currentRes.json() : {};
+
+      const updatedConfig = {
+        ...currentData,
+        links_dirs: $linksDirs,
+        radarr_api_key: $radarrApiKey,
+        sonarr_api_key: $sonarrApiKey,
+        tmdb_api_key: $tmdbApiKey,
+        discord_webhook_url: $discordWebhook,
+        alldebrid_instances: $alldebridInstances
+      };
+
       const res = await fetch('/api/v1/symlinks/config', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          links_dirs: $linksDirs,
-          radarr_api_key: $radarrApiKey,
-          sonarr_api_key: $sonarrApiKey,
-          tmdb_api_key: $tmdbApiKey,
-          discord_webhook_url: $discordWebhook   // ✅ ajouté
-        })
+        body: JSON.stringify(updatedConfig)
       });
-      if (res.ok) {
-        showToast('✅ Configuration sauvegardée !', 'success');
-      } else {
-        showToast('❌ Erreur lors de la sauvegarde', 'error');
-      }
+
+      if (res.ok) showToast('✅ Configuration complète sauvegardée !');
+      else showToast('❌ Erreur lors de la sauvegarde', 'error');
     } catch {
       showToast('🌐 Erreur réseau', 'error');
     } finally {
@@ -62,6 +76,7 @@
     }
   }
 
+  // === LIENS SYMLINKS ===
   function addLinksDir() {
     linksDirs.update(dirs => [...dirs, { path: '', manager: 'sonarr' }]);
   }
@@ -69,12 +84,41 @@
     linksDirs.update(dirs => dirs.filter((_, i) => i !== index));
   }
 
-  onMount(loadConfig);
+  // === INSTANCES ALLDEBRID ===
+  function addInstance() {
+    alldebridInstances.update(list => [
+      ...list,
+      {
+        name: '',
+        api_key: '',
+        mount_path: '',
+        cache_path: '',
+        rate_limit: 0.2,
+        priority: 1,
+        enabled: true
+      }
+    ]);
+  }
 
+  async function deleteInstance(name) {
+    if (!confirm(`Supprimer l'instance "${name}" ?`)) return;
+    try {
+      const res = await fetch(`/api/v1/instances/alldebrid/${name}`, { method: 'DELETE' });
+      if (res.ok) {
+        showToast(`🗑️ Instance ${name} supprimée`);
+        loadConfig();
+      } else showToast('❌ Erreur lors de la suppression', 'error');
+    } catch {
+      showToast('🌐 Erreur réseau', 'error');
+    }
+  }
+
+  onMount(loadConfig);
 </script>
 
 <main class="w-full max-w-5xl mx-auto p-8 space-y-10">
-  <!-- Toast -->
+
+  <!-- ✅ Toast -->
   {#if $toast}
     <div in:slide out:fade
       class="fixed top-4 right-4 px-4 py-3 rounded-xl shadow-lg flex items-center gap-2 
@@ -88,94 +132,126 @@
     </div>
   {/if}
 
-  <!-- Header -->
+  <!-- 🧭 Header -->
   <header class="text-center space-y-2">
     <h1 class="text-4xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-emerald-500 to-teal-400 drop-shadow">
-      ⚙️ Configuration Symlinks
+      ⚙️ Configuration générale
     </h1>
-    <p class="text-sm text-gray-600 dark:text-gray-400">Gérez vos dossiers, API keys et notifications.</p>
+    <p class="text-sm text-gray-600 dark:text-gray-400">Dossiers, API Keys, Discord & AllDebrid.</p>
   </header>
 
   <form class="space-y-12" on:submit|preventDefault={saveConfig}>
-    <!-- Liens symboliques -->
+
+    <!-- 📂 Liens symboliques -->
     <fieldset class="space-y-4">
       <legend class="legend-azure text-lg font-semibold">📂 Dossiers symlinks</legend>
       <div class="space-y-3">
         {#each $linksDirs as linkDir, index (index)}
-          <div in:fade out:fade class="flex flex-col md:flex-row gap-3 
-              bg-white/70 dark:bg-gray-800/60 backdrop-blur-lg p-4 rounded-xl shadow 
-              border border-gray-200 dark:border-gray-700">
-            <input
-              id={`linkDir-path-${index}`}
-              type="text"
-              bind:value={$linksDirs[index].path}
-              placeholder="/home/ubuntu/Medias/shows"
-              class="flex-1 input"
-              required
-            />
-            <select
-              id={`linkDir-manager-${index}`}
-              bind:value={$linksDirs[index].manager}
-              class="input text-sm"
-              required
-            >
+          <div in:fade out:fade
+            class="flex flex-col md:flex-row gap-3 bg-white/70 dark:bg-gray-800/60 backdrop-blur-lg p-4 rounded-xl shadow border border-gray-200 dark:border-gray-700">
+            <input type="text" bind:value={$linksDirs[index].path} placeholder="/home/ubuntu/Medias/shows" class="flex-1 input" required />
+            <select bind:value={$linksDirs[index].manager} class="input text-sm" required>
               <option value="sonarr">Sonarr</option>
               <option value="radarr">Radarr</option>
             </select>
-            <button type="button" on:click={() => removeLinksDir(index)}
-              class="text-red-500 hover:text-red-600 hover:scale-110 transition">
-              <Trash2 class="w-5 h-5"/>
+            <button type="button" on:click={() => removeLinksDir(index)} class="text-red-500 hover:text-red-600 hover:scale-110 transition">
+              <Trash2 class="w-5 h-5" />
             </button>
           </div>
         {/each}
       </div>
-
       <button type="button" on:click={addLinksDir} class="btn-outline">
-        <FolderPlus class="w-4 h-4"/> Ajouter un dossier
+        <FolderPlus class="w-4 h-4" /> Ajouter un dossier
       </button>
     </fieldset>
 
-    <!-- API Keys -->
+    <!-- 🔑 API Keys -->
     <fieldset class="space-y-6">
       <legend class="legend-azure text-lg font-semibold">🔑 Clés API</legend>
       <div class="grid gap-6 md:grid-cols-2">
         <div>
           <label for="radarrApiKey" class="label">Radarr API Key</label>
-          <input id="radarrApiKey" type="text" bind:value={$radarrApiKey} class="input w-full" required/>
+          <input id="radarrApiKey" type="text" bind:value={$radarrApiKey} class="input w-full" required />
         </div>
         <div>
           <label for="sonarrApiKey" class="label">Sonarr API Key</label>
-          <input id="sonarrApiKey" type="text" bind:value={$sonarrApiKey} class="input w-full" required/>
+          <input id="sonarrApiKey" type="text" bind:value={$sonarrApiKey} class="input w-full" required />
         </div>
         <div>
           <label for="tmdbApiKey" class="label">TMDB API Key</label>
-          <input id="tmdbApiKey" type="text" bind:value={$tmdbApiKey} class="input w-full" required/>
+          <input id="tmdbApiKey" type="text" bind:value={$tmdbApiKey} class="input w-full" required />
         </div>
       </div>
     </fieldset>
 
-    <!-- Discord Webhook -->
+    <!-- 🔔 Discord Webhook -->
     <fieldset class="space-y-6">
       <legend class="legend-azure text-lg font-semibold">🔔 Notifications Discord</legend>
-      <div class="flex items-center gap-3 
-          bg-white/70 dark:bg-gray-800/60 backdrop-blur-lg p-4 rounded-xl shadow 
-          border border-gray-200 dark:border-gray-700">
-        <BellRing class="w-5 h-5 text-indigo-500"/>
-        <input id="discordWebhook" type="text"
-          bind:value={$discordWebhook}
-          placeholder="https://discord.com/api/webhooks/xxxxx/xxxxx"
-          class="flex-1 input"
-        />
+      <div class="flex items-center gap-3 bg-white/70 dark:bg-gray-800/60 backdrop-blur-lg p-4 rounded-xl shadow border border-gray-200 dark:border-gray-700">
+        <BellRing class="w-5 h-5 text-indigo-500" />
+        <label for="discordWebhook" class="sr-only">Discord Webhook</label>
+        <input id="discordWebhook" type="text" bind:value={$discordWebhook} placeholder="https://discord.com/api/webhooks/xxxxx/xxxxx" class="flex-1 input" />
       </div>
     </fieldset>
 
-    <!-- Bouton -->
+    <!-- 🧩 Instances AllDebrid -->
+    <fieldset class="space-y-4">
+
+      <legend class="legend-azure text-lg font-semibold">
+        🧩 Instances AllDebrid -
+        <span class="text-sm font-normal">
+          Suppression des fichiers Alldebrid non rattachés à un symlink (Optionnel)
+        </span>
+      </legend>
+
+      <div class="space-y-4">
+        {#each $alldebridInstances as instance, index (index)}
+          <div in:fade out:fade
+            class="flex flex-col gap-4 bg-white/70 dark:bg-gray-800/60 backdrop-blur-lg p-5 rounded-xl shadow border border-gray-200 dark:border-gray-700">
+
+            <div class="grid md:grid-cols-2 gap-4">
+              <div>
+                <label for={`ad-name-${index}`} class="block text-sm text-gray-600 mb-1">Nom de l'instance</label>
+                <input id={`ad-name-${index}`} placeholder="Ex : AllDebrid_Premier" bind:value={$alldebridInstances[index].name} class="input" />
+              </div>
+
+              <div>
+                <label for={`ad-key-${index}`} class="block text-sm text-gray-600 mb-1">Clé API</label>
+                <input id={`ad-key-${index}`} placeholder="API Key AllDebrid" bind:value={$alldebridInstances[index].api_key} class="input" />
+              </div>
+
+              <div>
+                <label for={`ad-mount-${index}`} class="block text-sm text-gray-600 mb-1">Chemin de montage</label>
+                <input id={`ad-mount-${index}`} placeholder="/mnt/alldebrid/torrents" bind:value={$alldebridInstances[index].mount_path} class="input" />
+              </div>
+
+              <div>
+                <label for={`ad-cache-${index}`} class="block text-sm text-gray-600 mb-1">Chemin cache</label>
+                <input id={`ad-cache-${index}`} placeholder="/home/ubuntu/docker/ubuntu/decypharr/cache/alldebrid" bind:value={$alldebridInstances[index].cache_path} class="input w-full" />
+              </div>
+            </div>
+
+            <div class="flex justify-end">
+              <button type="button" on:click={() => deleteInstance(instance.name)} class="text-red-500 hover:text-red-600 flex items-center gap-1 text-sm">
+                <Trash2 class="w-4 h-4" /> Supprimer
+              </button>
+            </div>
+          </div>
+        {/each}
+      </div>
+
+      <button type="button" on:click={addInstance} class="btn-outline">
+        <FolderPlus class="w-4 h-4" /> Ajouter une instance
+      </button>
+    </fieldset>
+
+    <!-- ✅ Bouton principal -->
     <div class="flex items-center space-x-4">
       <button type="submit" class="btn-primary" disabled={$saving}>
         {#if $saving}
-          <Loader2 class="animate-spin w-5 h-5"/> Sauvegarde...
+          <Loader2 class="animate-spin w-5 h-5" /> Sauvegarde...
         {:else}
-          <Save class="w-5 h-5"/> Sauvegarder
+          <Save class="w-5 h-5" /> Sauvegarder
         {/if}
       </button>
     </div>
@@ -183,8 +259,9 @@
 </main>
 
 <style>
-  .legend-azure { color: #00BFFF; font-weight: 600; margin-bottom: .5rem; display:block; }
+  .legend-azure { color:#00BFFF; font-weight:600; margin-bottom:.5rem; display:block; }
   .label { display:block; margin-bottom:.25rem; font-weight:500; }
+  .sr-only { position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap; border:0; }
   .input {
     border-radius:.5rem; border:1px solid var(--tw-border-color);
     padding:.5rem 1rem; background-color: var(--tw-bg);

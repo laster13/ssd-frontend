@@ -19,6 +19,49 @@
   const discordWebhook = writable('');
   const saving = writable(false);
 
+  // === INSTANCES ALLDEBRID ===
+  const alldebridInstances = writable<
+    {
+      name: string;
+      api_key: string;
+      mount_path: string;
+      cache_path: string;
+      rate_limit?: number;
+      priority?: number;
+      enabled?: boolean;
+    }[]
+  >([]);
+
+  function addInstance() {
+    alldebridInstances.update(list => [
+      ...list,
+      {
+        name: '',
+        api_key: '',
+        mount_path: '',
+        cache_path: '',
+        rate_limit: 0.2,
+        priority: 1,
+        enabled: true
+      }
+    ]);
+  }
+
+  async function deleteInstance(name: string) {
+    if (!confirm(`Supprimer l'instance "${name}" ?`)) return;
+    try {
+      const res = await fetch(`/api/v1/instances/alldebrid/${name}`, { method: 'DELETE' });
+      if (res.ok) {
+        message.set(`🗑️ Instance ${name} supprimée`);
+        loadConfig();
+      } else {
+        message.set('❌ Erreur lors de la suppression');
+      }
+    } catch {
+      message.set('🌐 Erreur réseau');
+    }
+  }
+
   async function loadConfig() {
     try {
       const res = await fetch('/api/v1/symlinks/config');
@@ -31,6 +74,12 @@
         discordWebhook.set(data.discord_webhook_url || '');
       } else {
         message.set('❌ Erreur lors du chargement de la configuration');
+      }
+
+      // 🔹 Charge aussi les instances AllDebrid
+      const alldebridRes = await fetch('/api/v1/instances/alldebrid');
+      if (alldebridRes.ok) {
+        alldebridInstances.set(await alldebridRes.json());
       }
     } catch {
       message.set('🌐 Erreur réseau lors du chargement');
@@ -48,8 +97,9 @@
           links_dirs: $linksDirs,
           radarr_api_key: $radarrApiKey,
           sonarr_api_key: $sonarrApiKey,
-          tmdb_api_key: $tmdbApiKey, 
-          discord_webhook_url: $discordWebhook
+          tmdb_api_key: $tmdbApiKey,
+          discord_webhook_url: $discordWebhook,
+          alldebrid_instances: $alldebridInstances
         })
       });
       if (res.ok) {
@@ -58,7 +108,7 @@
         message.set('❌ Erreur lors de la sauvegarde');
       }
     } catch {
-      message.set('   Erreur réseau lors de la sauvegarde');
+      message.set('🌐 Erreur réseau lors de la sauvegarde');
     } finally {
       saving.set(false);
     }
@@ -182,9 +232,97 @@
           <input id="discordWebhook" type="text"
             bind:value={$discordWebhook}
             placeholder="https://discord.com/api/webhooks/xxxxx/xxxxx"
-            class="flex-1 input"
+            class="flex-1 rounded-lg border border-gray-300 dark:border-gray-600 bg-gray-50/80 dark:bg-gray-900/50 px-4 py-2 focus:outline-none focus:ring-2 focus:ring-emerald-500 transition"
           />
         </div>
+      </fieldset>
+
+      <!-- 🧩 Instances AllDebrid -->
+      <fieldset class="space-y-4">
+        <legend class="legend-azure text-lg font-semibold">
+          🧩 Instances AllDebrid -
+          <span class="text-sm font-normal">
+            Suppression des fichiers Alldebrid non rattachés à un symlink (Optionnel)
+          </span>
+        </legend>
+
+        <div class="space-y-4">
+          {#each $alldebridInstances as instance, index (index)}
+            <div
+              in:fade
+              out:fade
+              class="flex flex-col gap-4 bg-white/70 dark:bg-gray-800/60 backdrop-blur-lg p-5 rounded-xl shadow border border-gray-200 dark:border-gray-700"
+            >
+              <div class="grid md:grid-cols-2 gap-4">
+                <div>
+                  <label for={`ad-name-${index}`} class="block text-sm text-gray-600 mb-1">
+                    Nom de l'instance
+                  </label>
+                  <input
+                    id={`ad-name-${index}`}
+                    placeholder="Ex : AllDebrid_Premier"
+                    bind:value={$alldebridInstances[index].name}
+                    class="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-gray-50/80 dark:bg-gray-900/50 px-4 py-2 focus:outline-none focus:ring-2 focus:ring-emerald-500 transition"
+                  />
+                </div>
+
+                <div>
+                  <label for={`ad-key-${index}`} class="block text-sm text-gray-600 mb-1">
+                    Clé API
+                  </label>
+                  <input
+                    id={`ad-key-${index}`}
+                    placeholder="API Key AllDebrid"
+                    bind:value={$alldebridInstances[index].api_key}
+                    class="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-gray-50/80 dark:bg-gray-900/50 px-4 py-2 focus:outline-none focus:ring-2 focus:ring-emerald-500 transition"
+                  />
+                </div>
+
+                <div>
+                  <label for={`ad-mount-${index}`} class="block text-sm text-gray-600 mb-1">
+                    Chemin de montage
+                  </label>
+                  <input
+                    id={`ad-mount-${index}`}
+                    placeholder="/mnt/alldebrid/torrents"
+                    bind:value={$alldebridInstances[index].mount_path}
+                    class="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-gray-50/80 dark:bg-gray-900/50 px-4 py-2 focus:outline-none focus:ring-2 focus:ring-emerald-500 transition"
+                  />
+                </div>
+
+                <div>
+                  <label for={`ad-cache-${index}`} class="block text-sm text-gray-600 mb-1">
+                    Chemin cache
+                  </label>
+                  <input
+                    id={`ad-cache-${index}`}
+                    placeholder="/home/ubuntu/docker/ubuntu/decypharr/cache/alldebrid"
+                    bind:value={$alldebridInstances[index].cache_path}
+                    class="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-gray-50/80 dark:bg-gray-900/50 px-4 py-2 focus:outline-none focus:ring-2 focus:ring-emerald-500 transition"
+                  />
+                </div>
+              </div>
+
+              <div class="flex justify-end">
+                <button
+                  type="button"
+                  on:click={() => deleteInstance(instance.name)}
+                  class="text-red-500 hover:text-red-600 flex items-center gap-1 text-sm"
+                >
+                  <Trash2 class="w-4 h-4" /> Supprimer
+                </button>
+              </div>
+            </div>
+          {/each}
+        </div>
+
+        <button
+          type="button"
+          on:click={addInstance}
+          class="inline-flex items-center gap-2 px-4 py-2 rounded-lg border border-emerald-500 text-emerald-600 font-medium bg-white/60 dark:bg-gray-800/40 backdrop-blur hover:bg-emerald-50 dark:hover:bg-gray-800 transition"
+        >
+          <FolderPlus class="w-4 h-4" /> Ajouter une instance
+        </button>
       </fieldset>
 
       <!-- Bouton de sauvegarde + feedback -->
