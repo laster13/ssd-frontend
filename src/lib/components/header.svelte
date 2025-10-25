@@ -14,6 +14,7 @@
     { name: 'Accueil', path: '/' },
     { name: 'Sauvegardes', path: '/settings/sauvegarde' },
     { name: 'Symlinks', path: '/settings/symlinks' },
+    { name: 'Rapport Activité', path: '/settings/activity' },
     { name: 'Seasonarr', path: '/season/dashboard' },
     { name: 'Paramètres', path: '/settings' }
 

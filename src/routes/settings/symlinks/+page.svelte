@@ -497,10 +497,15 @@
     mounted = true;
     await loadAvailableDirs();
     await refreshList();
-    await loadLibraries();
     filtersReady = true;
     connectSSE();
   });
+
+  // 🔁 Dès que la config est prête => auto /libraries
+  $: if (mounted && get(availableDirs).length > 0) {
+    console.log("⚡ Config.json détectée, chargement des libraries...");
+    loadLibraries();
+  }
 
   // --- SSE ---
   function connectSSE() {
@@ -752,6 +757,27 @@
             Derniers symlinks ajoutés
           </span>
         </button>
+
+        <button
+          type="button"
+          class="w-full inline-flex items-center gap-3 px-4 py-2 rounded-lg border
+                 border-emerald-200 dark:border-emerald-700 
+                 bg-emerald-50 dark:bg-emerald-900/40 shadow-sm
+                 hover:shadow-md transition-all duration-300
+                 cursor-pointer"
+          on:click={() => window.location.href = `${baseURL}/settings/activity`}
+        >
+          <div class="w-6 h-6 flex items-center justify-center text-emerald-600 dark:text-emerald-300">
+            <Tv size={20} />
+          </div>
+          <span class="text-sm font-medium tracking-wide 
+                       bg-gradient-to-r from-emerald-500 to-teal-500 
+                       dark:from-emerald-300 dark:to-teal-400
+                       bg-clip-text text-transparent">
+            Rapport Activité
+          </span>
+        </button>
+
 
         <!-- ✅ Refresh -->
         <button
@@ -1014,6 +1040,30 @@
         Derniers symlinks ajoutés
       </span>
     </button>
+
+      <button
+        type="button"
+        class="inline-flex items-center gap-3 px-4 py-2 rounded-lg border
+               border-emerald-200 dark:border-emerald-700 
+               bg-emerald-50 dark:bg-emerald-900/40 shadow-sm
+               hover:shadow-md transition-all duration-300
+               cursor-pointer"
+        on:click={() => window.location.href = `${baseURL}/settings/activity`}
+      >
+        <!-- Icône -->
+        <div class="w-6 h-6 flex items-center justify-center text-emerald-600 dark:text-emerald-300">
+          <Tv size={20} />
+        </div>
+
+        <!-- Label -->
+        <span class="text-sm font-medium tracking-wide 
+                     bg-gradient-to-r from-emerald-500 to-teal-500 
+                     dark:from-emerald-300 dark:to-teal-400
+                     bg-clip-text text-transparent">
+          Rapport Activité
+        </span>
+      </button>
+
   </div>
 
   <!-- 🔺 Boutons desktop à droite -->

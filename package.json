@@ -20,6 +20,7 @@
     "@hey-api/client-fetch": "^0.4.4",
     "axios": "^1.11.0",
     "bits-ui": "^0.21.16",
+    "chart.js": "^4.5.1",
     "clsx": "^2.1.1",
     "cmdk-sv": "^0.0.17",
     "embla-carousel-autoplay": "^8.6.0",
