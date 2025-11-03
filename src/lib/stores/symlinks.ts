@@ -92,3 +92,7 @@ export const renameSuccess = writable({
   global: false,
 });
 
+// --- Historique des activités Symlinks ---
+export const activities = writable<any[]>([]);
+
+

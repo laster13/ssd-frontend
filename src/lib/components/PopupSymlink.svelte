@@ -2,7 +2,7 @@
   import { createEventDispatcher, onMount, onDestroy } from "svelte";
   import { fade, fly, scale } from "svelte/transition";
   import { cubicOut } from "svelte/easing";
-  import { ExternalLink, Wrench, Tv, X, Play, Loader2 } from "lucide-svelte"; // ✅ ajout Loader2
+  import { ExternalLink, Wrench, Tv, X, Play, Loader2 } from "lucide-svelte";
 
   const baseURL = import.meta.env.DEV
     ? import.meta.env.VITE_BACKEND_URL_HTTP
@@ -24,11 +24,10 @@
   let loadingOpen = false;
   let loadingRepair = false;
   let loadingSeasonarr = false;
-  let loadingTrailer = false; // ✅ ajout
+  let loadingTrailer = false;
 
   const isBroken = item.ref_count === 0 || item.target_exists === false;
 
-  // Flag trailer VF
   let isFrenchTrailer = false;
 
   function close() {
@@ -97,10 +96,15 @@
         const videoId = video.id.videoId;
         const title = video.snippet.title.toLowerCase();
 
-        // VF détectée
         isFrenchTrailer = title.includes("vf") || title.includes("français");
 
-        return `https://www.youtube.com/watch?v=${videoId}`;
+        // ✅ Correction : URL d’intégration complète (avec ton domaine)
+        const origin = import.meta.env.VITE_BACKEND_URL_HTTPS;
+        const trailerUrl = `https://www.youtube.com/embed/${videoId}?autoplay=1&enablejsapi=1&modestbranding=1&playsinline=1&rel=0&origin=${encodeURIComponent(
+          origin
+        )}&widget_referrer=${encodeURIComponent(origin)}`;
+
+        return trailerUrl;
       }
     } catch (e) {
       console.error("YouTube trailer fetch failed:", e);
@@ -163,7 +167,6 @@
       try {
         tmdbData = await fetchTmdbData(type, item.tmdbId);
 
-        // Trailer YouTube VF prioritaire
         const title = tmdbData?.title || sonarrData?.title || item.title;
         const trailer = await fetchYouTubeTrailer(title, item.year || tmdbData?.year);
 
@@ -186,6 +189,7 @@
   });
 </script>
 
+<!-- ================= POPUP ================= -->
 <div
   class="fixed inset-0 z-50 flex items-center justify-center bg-black/80"
   role="button"
@@ -402,30 +406,31 @@
       </div>
     </div>
 
-    {#if showTrailer}
-      <div
-        class="fixed inset-0 z-[100] flex items-center justify-center bg-black/90"
-        role="dialog"
-        aria-modal="true"
+{#if showTrailer}
+  <div
+    class="fixed inset-0 z-[100] flex items-center justify-center bg-black/90"
+    role="dialog"
+    aria-modal="true"
+  >
+    <div class="relative w-full max-w-4xl aspect-video">
+      <iframe
+        src={tmdbData.trailer}
+        referrerpolicy="origin"
+        class="w-full h-full rounded-xl"
+        allow="autoplay; fullscreen"
+        allowfullscreen
+        title="Bande-annonce"
+      ></iframe>
+      <button
+        type="button"
+        class="absolute top-2 right-2 text-white text-2xl"
+        on:click={() => showTrailer = false}
+        aria-label="Fermer la bande-annonce"
       >
-        <div class="relative w-full max-w-4xl aspect-video">
-          <iframe
-            src={tmdbData.trailer.replace("watch?v=", "embed/") +
-              (isFrenchTrailer ? "?autoplay=1" : "?autoplay=1&cc_load_policy=1&hl=fr")}
-            class="w-full h-full rounded-xl"
-            allow="autoplay; fullscreen"
-            title="Bande-annonce"
-          ></iframe>
-          <button
-            type="button"
-            class="absolute top-2 right-2 text-white text-2xl"
-            on:click={() => showTrailer = false}
-            aria-label="Fermer la bande-annonce"
-          >
-            ✖
-          </button>
-        </div>
-      </div>
-    {/if}
+        ✖
+      </button>
+    </div>
+  </div>
+{/if}
   </section>
 </div>

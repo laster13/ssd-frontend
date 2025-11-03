@@ -510,39 +510,131 @@
   // --- SSE ---
   function connectSSE() {
     const eventSource = new EventSource(`${baseURL}/api/v1/symlinks/events`);
+
     eventSource.addEventListener("symlink_update", async (event: MessageEvent) => {
       try {
         const payload = JSON.parse(event.data);
-        switch (payload.event) {
+        const evt = payload.event;
+
+        console.log("📡 SSE reçu:", evt, payload);
+
+        let refreshNeeded = false;
+
+        switch (evt) {
+          // --- Création d’un symlink ---
           case "symlink_added":
             symlinks.update(list =>
               list.some(i => i.symlink === payload.item.symlink)
                 ? list
                 : [payload.item, ...list]
             );
+            refreshNeeded = true;
             break;
 
+          // --- Suppression d’un symlink ---
           case "symlink_removed":
-            symlinks.update(list =>
-              list.filter(i => i.symlink !== payload.path)
-            );
+            symlinks.update(list => list.filter(i => i.symlink !== payload.path));
+            refreshNeeded = true;
             break;
 
+          // --- Màj des doublons ---
           case "duplicates_updated":
             duplicatesCount.set(payload.total || 0);
             break;
 
+          // --- Scan terminé ---
           case "scan_completed":
-            await refreshList();
+            refreshNeeded = true;
             break;
+
+          // --- ⚠️ Symlinks brisés (monitor léger, live, périodique, etc.) ---
+          case "broken_symlinks_light":
+          case "symlink_broken_live":
+          case "broken_symlinks_periodic":
+          case "broken_symlinks_detected":
+            console.warn(`⚠️ ${payload.count || 0} symlink(s) brisé(s) détecté(s) (${evt})`);
+
+            // ✅ Récupération de la bonne liste de symlinks brisés
+            const brokenList =
+              Array.isArray(payload) ? payload :
+              Array.isArray(payload.data) ? payload.data : [];
+
+            if (brokenList.length > 0) {
+              symlinks.update(list => {
+                const updatedList = [...list];
+                for (const brokenItem of brokenList) {
+                  const index = updatedList.findIndex(i => i.symlink === brokenItem.symlink);
+                  if (index !== -1) {
+                    // ✅ Met à jour ref_count = 0 et target_exists = false
+                    updatedList[index] = {
+                      ...updatedList[index],
+                      ...brokenItem,
+                      ref_count: 0,
+                      target_exists: false
+                    };
+                  } else {
+                    // 🆕 Si l’item n’existe pas, on l’ajoute
+                    updatedList.push({
+                      ...brokenItem,
+                      ref_count: 0,
+                      target_exists: false
+                    });
+                  }
+                }
+                return updatedList;
+              });
+            } else {
+              console.warn("⚠️ Aucun item 'broken' trouvé dans le payload SSE");
+            }
+
+            allBrokenCount.set(payload.count || brokenList.length || 0);
+            refreshNeeded = true;
+            logs.update(l => [
+              `⚠️ ${brokenList.length || payload.count || 0} symlink(s) brisé(s) détecté(s) (${evt})`,
+              ...l
+            ]);
+            break;
+
+          // --- 🔁 Symlink remplacé ---
+          case "symlink_replacement":
+            logs.update(l => [
+              `♻️ Symlink remplacé : ${payload.old_path} → ${payload.new_path}`,
+              ...l
+            ]);
+            refreshNeeded = true;
+            break;
+
+          // --- Suppression d’orphelins ---
+          case "orphans_deleted":
+            logs.update(l => [
+              `🧹 ${payload.count || 0} orphelin(s) supprimé(s)`,
+              ...l
+            ]);
+            refreshNeeded = true;
+            break;
+
+          // --- Scan initial ---
+          case "initial_scan":
+            logs.update(l => [
+              `🔍 Scan initial terminé — ${payload.count || 0} symlinks`,
+              ...l
+            ]);
+            refreshNeeded = true;
+            break;
+
+          default:
+            console.debug("ℹ️ Événement SSE non géré :", evt);
         }
 
-        // ✅ Après chaque event, on recharge la vérité depuis le backend
-        await loadLatestSymlinks();
-        await refreshList();
-        await loadLibraries();
+        // --- Synchronisation globale ---
+        if (refreshNeeded) {
+          await refreshList();      // ⚙️ recharge symlinks + compteurs
+          await loadLatestSymlinks();
+          await loadLibraries();    // recharge imdbMissing
+        }
+
       } catch (err) {
-        console.error("❌ SSE parse error:", err);
+        console.error("❌ Erreur lors du traitement SSE :", err);
       }
     });
 
