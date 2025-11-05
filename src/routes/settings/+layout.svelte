@@ -15,7 +15,8 @@
         { name: 'Medias Servers', path: '/settings/mediaserver', icon: Tv },
         { name: 'Applications', path: '/settings/applications', icon: Grid },
         { name: 'Symlinks', path: '/settings/symlinks', icon: LinkIcon },
-        { name: 'Sauvegarde', path: '/settings/sauvegarde', icon: Save }
+        { name: 'Sauvegarde', path: '/settings/sauvegarde', icon: Save },
+        { name: 'Mise à Jour', path: '/settings/update', icon: Save }
     ];
 </script>
 

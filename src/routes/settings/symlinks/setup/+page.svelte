@@ -179,7 +179,27 @@
         </div>
         <div>
           <label for="tmdbApiKey" class="label">TMDB API Key</label>
-          <input id="tmdbApiKey" type="text" bind:value={$tmdbApiKey} class="input w-full" required />
+          <input
+            id="tmdbApiKey"
+            type="text"
+            bind:value={$tmdbApiKey}
+            class="input w-full"
+            required
+          />
+          <div class="flex items-center text-yellow-600 text-sm mt-2">
+            <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                d="M12 9v2m0 4h.01M10.29 3.86l-7.37 12.8A1 1 0 004 19h16a1 1 0 00.87-1.47l-7.37-12.8a1 1 0 00-1.74 0z" />
+            </svg>
+            <span>
+              Obtenez votre clé API sur
+              <a href="https://www.themoviedb.org/settings/api?language=fr"
+                 target="_blank"
+                 class="underline hover:text-yellow-700 transition">
+                themoviedb.org
+              </a>.
+            </span>
+          </div>
         </div>
       </div>
     </fieldset>
@@ -221,8 +241,24 @@
               </div>
 
               <div>
-                <label for={`ad-mount-${index}`} class="block text-sm text-gray-600 mb-1">Chemin de montage</label>
-                <input id={`ad-mount-${index}`} placeholder="/mnt/alldebrid/torrents" bind:value={$alldebridInstances[index].mount_path} class="input" />
+                <label for={`ad-mount-${index}`} class="block text-sm text-gray-600 mb-1">
+                  Chemin de montage
+                </label>
+
+                <input
+                  id={`ad-mount-${index}`}
+                  placeholder="/mnt/alldebrid/torrents"
+                  bind:value={$alldebridInstances[index].mount_path}
+                  class="input"
+                />
+
+                <div class="flex items-center text-yellow-600 text-sm mt-2">
+                  <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                      d="M12 9v2m0 4h.01M10.29 3.86l-7.37 12.8A1 1 0 004 19h16a1 1 0 00.87-1.47l-7.37-12.8a1 1 0 00-1.74 0z" />
+                  </svg>
+                  <span>Assurez-vous que le dossier soit le même que celui de decypharr (torrents/__all__).</span>
+                </div>
               </div>
 
               <div>

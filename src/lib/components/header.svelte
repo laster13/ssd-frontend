@@ -16,7 +16,8 @@
     { name: 'Symlinks', path: '/settings/symlinks' },
     { name: 'Rapport Activité', path: '/settings/activity' },
     { name: 'Seasonarr', path: '/season/dashboard' },
-    { name: 'Paramètres', path: '/settings' }
+    { name: 'Paramètres', path: '/settings' },
+    { name: 'Mises à Jour', path: '/settings/update' }
 
   ];
 
@@ -26,7 +27,8 @@
     { name: 'Medias', desc: 'Plex, Jellyfin, Emby…', path: '/settings/mediaserver', icon: Tv },
     { name: 'Apps', desc: 'Vos applications', path: '/settings/applications', icon: Grid },
     { name: 'Symlinks', desc: 'Simplifiez vos liens', path: '/settings/symlinks', icon: LinkIcon },
-    { name: 'Backup', desc: 'Protégez vos données', path: '/settings/sauvegarde', icon: Save }
+    { name: 'Backup', desc: 'Protégez vos données', path: '/settings/sauvegarde', icon: Save },
+    { name: 'Update', desc: 'Protégez vos données', path: '/settings/update', icon: Save }
   ];
 
   let showMenu: Writable<boolean> = getContext('showMenu');

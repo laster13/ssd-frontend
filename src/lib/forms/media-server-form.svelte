@@ -29,7 +29,21 @@
 		}
 	});
 
-	const { form: formData, enhance, message, delayed } = form;
+        const { form: formData, enhance, message, delayed } = form;
+
+        // Active automatiquement les services configurés dans le JSON
+        $: {
+            if ($formData.plex_token || $formData.plex_login) {
+                $formData.plex_enabled = true;
+            }
+            if ($formData.jellyfin_token) {
+                $formData.jellyfin_enabled = true;
+            }
+            if ($formData.emby_token) {
+                $formData.emby_enabled = true;
+            }
+        }
+
 
 	$: if ($message && $page.status === 200) {
 		toast.success($message);

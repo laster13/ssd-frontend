@@ -95,4 +95,37 @@ export const renameSuccess = writable({
 // --- Historique des activités Symlinks ---
 export const activities = writable<any[]>([]);
 
+// --- 🔔 Notification globale pour les mises à jour ---
+export const updateNotification = writable({
+    type: null,
+    message: null,
+    version: null
+});
+
+if (typeof window !== "undefined") {
+    const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
+    const sse = new EventSource(`${API_BASE_URL}/symlinks/events`);
+
+    ["update_available_backend", "update_available_frontend"].forEach((evt) => {
+        sse.addEventListener(evt, (event) => {
+            const data = JSON.parse(event.data);
+            updateNotification.set({
+                type: evt.includes("backend") ? "backend" : "frontend",
+                message: data.message,
+                version: data.version || null
+            });
+        });
+    });
+
+    sse.addEventListener("update_error", (event) => {
+        const data = JSON.parse(event.data);
+        updateNotification.set({
+            type: "error",
+            message: data.message,
+            version: null
+        });
+    });
+}
+
+
 

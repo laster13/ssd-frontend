@@ -1,32 +1,38 @@
 <script lang="ts">
-	import { ModeWatcher } from 'mode-watcher';
-	import { Toaster } from '$lib/components/ui/sonner';
-	import '../app.css';
-	import { afterNavigate, beforeNavigate } from '$app/navigation';
-	import NProgress from 'nprogress';
-	import { setContext } from 'svelte';
-	import { dev } from '$app/environment';
-	import { writable, type Writable } from 'svelte/store';
+    import { ModeWatcher } from 'mode-watcher';
+    import { Toaster } from '$lib/components/ui/sonner';
+    import '../app.css';
+    import { afterNavigate, beforeNavigate } from '$app/navigation';
+    import NProgress from 'nprogress';
+    import { setContext } from 'svelte';
+    import { dev } from '$app/environment';
+    import { writable, type Writable } from 'svelte/store';
+    import UpdateBanner from '$lib/components/UpdateBanner.svelte'; // 🔔 ta bannière globale
 
-	const showMenu: Writable<boolean> = writable(false);
+    const showMenu: Writable<boolean> = writable(false);
 
-	setContext('formDebug', dev);
-	setContext('showMenu', showMenu);
+    setContext('formDebug', dev);
+    setContext('showMenu', showMenu);
 
-	beforeNavigate(() => {
-		NProgress.start();
-	});
-	afterNavigate(() => {
-		NProgress.done();
-	});
-	NProgress.configure({
-		showSpinner: false
-	});
+    beforeNavigate(() => {
+        NProgress.start();
+    });
+
+    afterNavigate(() => {
+        NProgress.done();
+    });
+
+    NProgress.configure({
+        showSpinner: false
+    });
 </script>
 
 <ModeWatcher track={true}></ModeWatcher>
 <Toaster richColors closeButton />
 
+<!-- 🔔 Bannière globale de mise à jour -->
+<UpdateBanner />
+
 <div class="bg-background font-primary font-medium">
-	<slot />
+    <slot />
 </div>

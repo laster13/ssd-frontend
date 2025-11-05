@@ -219,6 +219,20 @@
                 class="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-gray-50/80 dark:bg-gray-900/50 px-4 py-2 focus:outline-none focus:ring-2 focus:ring-emerald-500 transition"
                 required
             />
+            <div class="flex items-center text-yellow-600 text-sm mt-2">
+                <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                        d="M12 9v2m0 4h.01M10.29 3.86l-7.37 12.8A1 1 0 004 19h16a1 1 0 00.87-1.47l-7.37-12.8a1 1 0 00-1.74 0z" />
+                </svg>
+                <span>
+                    Obtenez votre clé API sur
+                    <a href="https://www.themoviedb.org/settings/api?language=fr"
+                       target="_blank"
+                       class="underline hover:text-yellow-700 transition">
+                        themoviedb.org
+                    </a>.
+                </span>
+            </div>
         </div>
       </fieldset>
 
@@ -288,6 +302,13 @@
                     bind:value={$alldebridInstances[index].mount_path}
                     class="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-gray-50/80 dark:bg-gray-900/50 px-4 py-2 focus:outline-none focus:ring-2 focus:ring-emerald-500 transition"
                   />
+                  <div class="flex items-center text-yellow-600 text-sm mt-2">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                        d="M12 9v2m0 4h.01M10.29 3.86l-7.37 12.8A1 1 0 004 19h16a1 1 0 00.87-1.47l-7.37-12.8a1 1 0 00-1.74 0z" />
+                    </svg>
+                    <span>Assurez-vous que le dossier soit le même que celui de decypharr (torrents/__all__).</span>
+                  </div>
                 </div>
 
                 <div>
