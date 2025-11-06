@@ -16,6 +16,8 @@
   const toast = writable<{ msg: string; type: string } | null>(null);
   const journalOpen = writable(true);
 
+  let autoCheckInterval: any = null; // 🕒 contrôle global de l’auto-check
+
   // --- Filtrage du journal
   const filteredLogs = derived([logs, filter], ([$logs, $filter]) => {
     if ($filter === "all") return $logs;
@@ -45,14 +47,25 @@
       const res = await fetch(`${API_BASE_URL}/update/check`);
       if (!res.ok) throw new Error("HTTP error");
       const data = await res.json();
+
       backendVersion.set(data.backend.current);
       frontendVersion.set(data.frontend.current);
       updateData.set(data);
       updateMessage.set(data.message);
       log(data.message, "info");
+
+      // 🧩 Stoppe les auto-check si une mise à jour est disponible
+      if (data.update_available) {
+        console.log("⏸️ Auto-check suspendu : mise à jour détectée.");
+        if (autoCheckInterval) clearInterval(autoCheckInterval);
+        autoCheckInterval = null;
+      }
+
+      return data;
     } catch {
       updateMessage.set("⚠️ Erreur chargement des versions.");
       log("Erreur chargement des versions.", "error");
+      return null;
     }
   }
 
@@ -84,6 +97,10 @@
     updateMessage.set(`🔧 Mise à jour ${label} en cours...`);
     log(`Mise à jour ${label} démarrée...`, "update");
 
+    // 🧩 Stoppe l’auto-check pendant la mise à jour
+    if (autoCheckInterval) clearInterval(autoCheckInterval);
+    autoCheckInterval = null;
+
     try {
       const res = await fetch(`${API_BASE_URL}/update/run/${target}`, { method: "POST" });
       const data = await res.json();
@@ -100,6 +117,8 @@
       showToast("❌ Erreur réseau pendant la mise à jour", "error");
     } finally {
       updating.set(false);
+      // 🔁 Relance l’auto-check après MAJ
+      startAutoCheck();
     }
   }
 
@@ -116,23 +135,23 @@
 
     sse.onopen = async () => {
       connectionStatus.set("connected");
-
-      // 🧠 Quand le backend redémarre → on recharge les infos
       await loadVersions();
       await loadPersistentNotification();
     };
 
     sse.onerror = () => connectionStatus.set("disconnected");
 
-    // 📦 Événements de mise à jour disponible
+    // ⚡ Événements de mise à jour (et seulement eux)
     ["update_available_backend", "update_available_frontend"].forEach((evt) => {
-      sse.addEventListener(evt, (event) => {
+      sse.addEventListener(evt, async (event) => {
         const data = JSON.parse(event.data);
         updateMessage.set(data.message);
         log(data.message, "update");
         showToast(data.message, "info");
         updating.set(false);
-        loadVersions();
+
+        // ✅ On recharge les infos de version uniquement pour une vraie mise à jour
+        await loadVersions();
 
         // 🔔 Bannière globale
         updateNotification.set({
@@ -145,25 +164,39 @@
 
     // ✅ Événement de mise à jour terminée
     sse.addEventListener("update_finished", async (event) => {
-      console.log("🔥 EVENT FINISH", event.data);
       const data = JSON.parse(event.data);
       updateMessage.set(data.message);
       log(data.message, "update");
       showToast(data.message, "success");
       updating.set(false);
+
+      // ✅ Recharge les versions seulement ici
       await loadVersions();
 
-      // 🧹 Efface la bannière (et vérifie la DB)
+      // 🧹 Efface la bannière et recharge depuis DB
       updateNotification.set(null);
       await loadPersistentNotification();
+
+      // 🔁 Relance l’auto-check après mise à jour
+      startAutoCheck();
     });
+
+    // ⚙️ Les autres events (symlinks, Discord, etc.) sont ignorés
+    // → plus de /update/check intempestif
   }
 
-  // --- Auto-check périodique
+  // --- Auto-check périodique (toutes les 15 min)
   function startAutoCheck() {
-    setInterval(() => {
-      loadVersions();
-      loadPersistentNotification();
+    if (autoCheckInterval) clearInterval(autoCheckInterval);
+    autoCheckInterval = setInterval(async () => {
+      const data = await loadVersions();
+      await loadPersistentNotification();
+
+      if (data?.update_available) {
+        console.log("⏸️ Auto-check suspendu : mise à jour détectée.");
+        clearInterval(autoCheckInterval);
+        autoCheckInterval = null;
+      }
     }, 15 * 60 * 1000);
   }
 
@@ -171,8 +204,9 @@
   onMount(() => {
     const saved = localStorage.getItem("updateLogs");
     if (saved) logs.set(JSON.parse(saved));
+
     loadVersions();
-    loadPersistentNotification(); // 🧠 charge depuis la DB dès le départ
+    loadPersistentNotification();
     connectSSE();
     startAutoCheck();
   });
