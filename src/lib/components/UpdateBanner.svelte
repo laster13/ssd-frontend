@@ -1,12 +1,9 @@
 <script lang="ts">
     import { updateNotification } from '$lib/stores/symlinks';
     import { fade, fly } from 'svelte/transition';
-
-    let notif;
-    $: notif = $updateNotification;
 </script>
 
-{#if notif.type}
+{#if $updateNotification?.type}
     <div
         in:fly={{ y: 30, duration: 400 }}
         out:fade={{ duration: 300 }}
@@ -29,12 +26,12 @@
         <!-- Texte -->
         <div class="flex flex-col">
             <span class="text-xs font-semibold tracking-wide leading-tight">
-                {notif.type === 'backend'
+                {$updateNotification.type === 'backend'
                     ? 'Mise à jour BACKEND disponible'
                     : 'Mise à jour FRONTEND disponible'}
             </span>
             <span class="text-[11px] text-gray-600 dark:text-gray-300 mt-0.5 leading-snug">
-                {notif.message}
+                {$updateNotification.message}
             </span>
         </div>
     </div>

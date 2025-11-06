@@ -2,7 +2,7 @@
   import { onMount } from "svelte";
   import { writable, get, derived } from "svelte/store";
   import { fade, scale } from "svelte/transition";
-  import { updateNotification } from '$lib/stores/symlinks';
+  import { updateNotification } from "$lib/stores/symlinks";
 
   const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
   const backendVersion = writable("—");
@@ -16,11 +16,13 @@
   const toast = writable<{ msg: string; type: string } | null>(null);
   const journalOpen = writable(true);
 
+  // --- Filtrage du journal
   const filteredLogs = derived([logs, filter], ([$logs, $filter]) => {
     if ($filter === "all") return $logs;
     return $logs.filter((l) => l.type === $filter);
   });
 
+  // --- Utilitaires
   function formatDate() {
     const d = new Date();
     return `${d.toLocaleDateString()} ${d.toLocaleTimeString()}`;
@@ -37,6 +39,7 @@
     localStorage.setItem("updateLogs", JSON.stringify(get(logs)));
   }
 
+  // --- Chargement des versions
   async function loadVersions() {
     try {
       const res = await fetch(`${API_BASE_URL}/update/check`);
@@ -53,6 +56,28 @@
     }
   }
 
+  // --- Vérifie la notification persistante stockée en base
+  async function loadPersistentNotification() {
+    try {
+      const res = await fetch(`${API_BASE_URL}/update/persistent`);
+      if (!res.ok) return;
+      const data = await res.json();
+
+      if (data.has_update) {
+        updateNotification.set({
+          type: data.type,
+          message: data.message,
+          version: data.version || null,
+        });
+      } else {
+        updateNotification.set(null);
+      }
+    } catch (err) {
+      console.warn("⚠️ Erreur chargement notifications persistantes", err);
+    }
+  }
+
+  // --- Lancement manuel d'une mise à jour
   async function runUpdate(target: "backend" | "frontend") {
     updating.set(true);
     const label = target.toUpperCase();
@@ -65,6 +90,10 @@
       updateMessage.set(data.message);
       log(data.message, "update");
       showToast(`✅ ${label} mis à jour avec succès`, "success");
+
+      // 🧹 Efface la bannière après succès
+      updateNotification.set(null);
+      await loadPersistentNotification();
     } catch {
       updateMessage.set("❌ Erreur réseau pendant la mise à jour.");
       log("Erreur réseau pendant la mise à jour.", "error");
@@ -74,44 +103,76 @@
     }
   }
 
+  // --- Effacer le journal local
   function clearLogs() {
     logs.set([]);
     localStorage.removeItem("updateLogs");
     showToast("🧹 Journal effacé", "info");
   }
 
+  // --- Connexion SSE
   function connectSSE() {
     const sse = new EventSource(`${API_BASE_URL}/symlinks/events`);
-    sse.onopen = () => connectionStatus.set("connected");
+
+    sse.onopen = async () => {
+      connectionStatus.set("connected");
+
+      // 🧠 Quand le backend redémarre → on recharge les infos
+      await loadVersions();
+      await loadPersistentNotification();
+    };
+
     sse.onerror = () => connectionStatus.set("disconnected");
 
-    ["update_available_backend", "update_available_frontend", "update_finished"].forEach((evt) => {
-        sse.addEventListener(evt, (event) => {
-            const data = JSON.parse(event.data);
-            updateMessage.set(data.message);
-            log(data.message, "update");
-            showToast(data.message, "info");
-            updating.set(false);
-            loadVersions();
+    // 📦 Événements de mise à jour disponible
+    ["update_available_backend", "update_available_frontend"].forEach((evt) => {
+      sse.addEventListener(evt, (event) => {
+        const data = JSON.parse(event.data);
+        updateMessage.set(data.message);
+        log(data.message, "update");
+        showToast(data.message, "info");
+        updating.set(false);
+        loadVersions();
 
-            // 🔔 Ajout pour la bannière globale
-            updateNotification.set({
-                type: evt.includes("backend") ? "backend" : "frontend",
-                message: data.message,
-                version: data.version || null
-            });
+        // 🔔 Bannière globale
+        updateNotification.set({
+          type: evt.includes("backend") ? "backend" : "frontend",
+          message: data.message,
+          version: data.version || null,
         });
+      });
+    });
+
+    // ✅ Événement de mise à jour terminée
+    sse.addEventListener("update_finished", async (event) => {
+      console.log("🔥 EVENT FINISH", event.data);
+      const data = JSON.parse(event.data);
+      updateMessage.set(data.message);
+      log(data.message, "update");
+      showToast(data.message, "success");
+      updating.set(false);
+      await loadVersions();
+
+      // 🧹 Efface la bannière (et vérifie la DB)
+      updateNotification.set(null);
+      await loadPersistentNotification();
     });
   }
 
+  // --- Auto-check périodique
   function startAutoCheck() {
-    setInterval(() => loadVersions(), 15 * 60 * 1000);
+    setInterval(() => {
+      loadVersions();
+      loadPersistentNotification();
+    }, 15 * 60 * 1000);
   }
 
+  // --- Initialisation au montage
   onMount(() => {
     const saved = localStorage.getItem("updateLogs");
     if (saved) logs.set(JSON.parse(saved));
     loadVersions();
+    loadPersistentNotification(); // 🧠 charge depuis la DB dès le départ
     connectSSE();
     startAutoCheck();
   });
