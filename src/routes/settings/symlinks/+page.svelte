@@ -7,12 +7,12 @@
   import SymlinkCard from "$lib/components/SymlinkCard.svelte";
   import ActionButton from "$lib/components/ActionButton.svelte";
   import ToggleLatest from "$lib/components/ToggleLatest.svelte";
-  import PopupRename from "$lib/components/PopupRename.svelte";
 
   import {
     FolderSearch, ChevronDown, Search, Sparkles, FolderOpen, Trash,
-    RefreshCw, Info, Scan, Filter, Lightbulb, Trash2, Loader2, CheckCircle2, Tv
+    RefreshCw, Info, Scan, Filter, Lightbulb, Trash2, Loader2, Edit3, CheckCircle2, Tv
   } from "lucide-svelte";
+
 
   import {
     symlinks, search, rowsPerPage, currentPage, scanStatus, selected,
@@ -664,45 +664,6 @@
         🌐 Tableau de bord
         <ChevronDown class="w-4 h-4 opacity-80 transition-transform duration-200 group-open:rotate-180" />
       </summary>
-
-        {#if $imdbMissing > 0}
-          <button
-            type="button"
-            class="w-full inline-flex items-center gap-3 px-4 py-2 rounded-lg border
-                   border-pink-200 dark:border-pink-700 
-                   bg-pink-50 dark:bg-pink-900/40 shadow-sm
-                   hover:shadow-md transition-all duration-300
-                   cursor-pointer"
-            on:click={() => {
-              activeFilter.set($activeFilter === 'rename' ? 'none' : 'rename');
-              refreshList();
-            }}
-          >
-            <label class="relative inline-flex items-center cursor-pointer select-none">
-              <input type="checkbox" checked={$activeFilter === 'rename'} class="sr-only peer" />
-              <div class="w-12 h-6 rounded-full transition-all duration-500
-                          bg-gradient-to-r from-gray-200 to-gray-400 
-                          dark:from-gray-700 dark:to-gray-900
-                          peer-checked:from-pink-500 peer-checked:to-rose-600
-                          shadow-inner peer-checked:shadow-[0_0_8px_rgba(236,72,153,0.5)]"></div>
-              <div class="absolute left-0.5 top-0.5 w-5 h-5 rounded-full 
-                          bg-white dark:bg-gray-100 flex items-center justify-center
-                          transition-all duration-500 ease-in-out
-                          peer-checked:translate-x-6 peer-checked:rotate-[360deg]
-                          shadow-md group-hover:scale-110">
-                {#if $activeFilter === 'rename'} 🎬 {:else} 🎞️ {/if}
-              </div>
-            </label>
-            <span class="text-sm font-medium tracking-wide 
-                         bg-gradient-to-r from-pink-600 to-rose-600 
-                         dark:from-pink-400 dark:to-rose-400
-                         bg-clip-text text-transparent">
-              {$activeFilter === 'rename' 
-                ? `À renommer uniquement (${$imdbMissing})` 
-                : `À renommer (${$imdbMissing})`}
-            </span>
-          </button>
-        {/if}
       <div
         class="absolute z-10 mt-1 bg-white dark:bg-gray-800 
                border border-gray-300 dark:border-gray-600 
@@ -870,6 +831,26 @@
           </span>
         </button>
 
+        <button
+          type="button"
+          class="w-full inline-flex items-center gap-3 px-4 py-2 rounded-lg border
+                 border-amber-300 dark:border-amber-700 
+                 bg-amber-50 dark:bg-amber-900/40 shadow-sm
+                 hover:shadow-md transition-all duration-300
+                 cursor-pointer"
+          on:click={() => window.location.href = `${baseURL}/settings/rename`}
+        >
+          <div class="w-6 h-6 flex items-center justify-center text-amber-600 dark:text-amber-300">
+            <Edit3 size={20} />
+          </div>
+
+          <span class="text-sm font-medium tracking-wide 
+                       bg-gradient-to-r from-amber-500 to-yellow-500
+                       dark:from-amber-300 dark:to-yellow-400
+                       bg-clip-text text-transparent">
+            Renommage
+          </span>
+        </button>
 
         <!-- ✅ Refresh -->
         <button
@@ -949,45 +930,6 @@
 
   <!-- 👈 Boutons desktop gauche -->
   <div class="hidden md:flex flex-wrap gap-2 items-center">
-
-    {#if $imdbMissing > 0}
-        <button
-            type="button"
-            class="inline-flex items-center gap-3 px-4 py-2 rounded-lg border
-                   border-pink-200 dark:border-pink-700 
-                   bg-pink-50 dark:bg-pink-900/40 shadow-sm
-                   hover:shadow-md transition-all duration-300
-                   cursor-pointer"
-            on:click={() => {
-                activeFilter.set($activeFilter === 'rename' ? 'none' : 'rename');
-                refreshList();
-            }}
-        >
-            <label class="relative inline-flex items-center cursor-pointer select-none">
-                <input type="checkbox" checked={$activeFilter === 'rename'} class="sr-only peer" />
-                <div class="w-12 h-6 rounded-full transition-all duration-500
-                            bg-gradient-to-r from-gray-200 to-gray-400 
-                            dark:from-gray-700 dark:to-gray-900
-                            peer-checked:from-pink-500 peer-checked:to-rose-600
-                            shadow-inner peer-checked:shadow-[0_0_8px_rgba(236,72,153,0.5)]"></div>
-                <div class="absolute left-0.5 top-0.5 w-5 h-5 rounded-full 
-                            bg-white dark:bg-gray-100 flex items-center justify-center
-                            transition-all duration-500 ease-in-out
-                            peer-checked:translate-x-6 peer-checked:rotate-[360deg]
-                            shadow-md group-hover:scale-110">
-                    {#if $activeFilter === 'rename'} 🎬 {:else} 🎞️ {/if}
-                </div>
-            </label>
-            <span class="text-sm font-medium tracking-wide 
-                         bg-gradient-to-r from-pink-600 to-rose-600 
-                         dark:from-pink-400 dark:to-rose-400
-                         bg-clip-text text-transparent">
-                {$activeFilter === 'rename' 
-                    ? `À renommer uniquement (${$imdbMissing})` 
-                    : `À renommer (${$imdbMissing})`}
-            </span>
-        </button>
-    {/if}
 
 <!-- ✅ Bouton Seasonarr -->
       <button
@@ -1153,6 +1095,29 @@
                      dark:from-emerald-300 dark:to-teal-400
                      bg-clip-text text-transparent">
           Rapport Activité
+        </span>
+      </button>
+
+      <button
+        type="button"
+        class="inline-flex items-center gap-3 px-4 py-2 rounded-lg border
+               border-amber-300 dark:border-amber-700 
+               bg-amber-50 dark:bg-amber-900/30 shadow-sm
+               hover:shadow-md transition-all duration-300
+               cursor-pointer"
+        on:click={() => window.location.href = `${baseURL}/settings/rename`}
+      >
+        <!-- Icône -->
+        <div class="w-6 h-6 flex items-center justify-center text-amber-600 dark:text-amber-300">
+          <Edit3 size={20} />
+        </div>
+
+        <!-- Label -->
+        <span class="text-sm font-medium tracking-wide 
+                     bg-gradient-to-r from-amber-600 to-amber-500 
+                     dark:from-amber-300 dark:to-amber-400
+                     bg-clip-text text-transparent">
+          Renommage
         </span>
       </button>
 
@@ -1342,94 +1307,6 @@
     </div>
   </div>
 
-  {#if $activeFilter === 'rename'}
-  <div class="flex items-center gap-6 mt-8">
-    <!-- 💡 Tips avec bulle -->
-    <div class="relative inline-block group">
-      <div class="flex items-center gap-2 cursor-pointer">
-        <!-- Ampoule premium -->
-        <span class="relative flex items-center justify-center">
-          <Lightbulb 
-            class="w-7 h-7 text-yellow-400 drop-shadow-[0_0_6px_rgba(250,204,21,0.8)]" 
-          />
-          <!-- Glow scintillant -->
-          <span class="absolute inline-flex h-8 w-8 rounded-full 
-                       bg-yellow-300 opacity-60 animate-ping"></span>
-        </span>
-        <span class="font-semibold text-sm text-gray-700 dark:text-gray-200">Tips</span>
-      </div>
-
-      <!-- Bulle affichée au hover -->
-      <div
-        class="absolute left-0 mt-3 hidden w-96 p-4 rounded-xl shadow-lg 
-               bg-yellow-50 text-gray-800 text-xs leading-relaxed
-               dark:bg-[#3a372e] dark:text-gray-200
-               group-hover:block transition-all duration-300 z-50"
-      >
-        <p class="mb-2 font-semibold text-gray-900 dark:text-gray-100">
-          Plex attend un format standard :
-        </p>
-
-        <p class="mb-2 flex items-center gap-2">
-          🎬 <span>Films → 
-            <code class="font-mono px-1 rounded bg-yellow-100/70 dark:bg-yellow-800/50 text-gray-800 dark:text-yellow-100">
-              Titre (Année)/Titre (Année).mkv
-            </code>
-          </span>
-        </p>
-
-        <p class="mb-3 flex items-center gap-2">
-          📺 <span>Séries → 
-            <code class="font-mono px-1 rounded bg-yellow-100/70 dark:bg-yellow-800/50 text-gray-800 dark:text-yellow-100">
-              Nom (Année)/Season 01/Nom (Année) - S01E01.mkv
-            </code>
-          </span>
-        </p>
-
-        <p class="mt-2 flex items-start gap-2">
-          👉 <span>
-            Utiliser un format clair pour les symlinks et leur ajouter 
-            <code class="font-mono px-1 rounded bg-yellow-100/70 dark:bg-yellow-800/50 text-gray-800 dark:text-yellow-100">
-              &lbrace;imdb-tt1234567&rbrace;
-            </code><br />
-            <span class="font-semibold bg-gradient-to-r from-amber-500 to-yellow-500 bg-clip-text text-transparent">
-              assure une reconnaissance parfaite
-            </span> 
-            pour Plex, Radarr, Sonarr et les API du projet.
-          </span>
-        </p>
-      </div>
-    </div>
-
-    <!-- 🚀 Bouton premium qui ouvre le popup -->
-    <button
-      type="button"
-      class="inline-flex items-center gap-3 px-4 py-2 rounded-lg border
-             border-pink-200 dark:border-pink-700 
-             bg-pink-50 dark:bg-pink-900/40 shadow-sm
-             hover:shadow-md transition-all duration-300
-             cursor-pointer"
-      on:click={() => showRenamePopup = true}
-    >
-        <span class="text-lg">🎬</span>
-        <span class="text-sm font-medium tracking-wide 
-                     bg-gradient-to-r from-pink-600 to-rose-600 
-                     dark:from-pink-400 dark:to-rose-400
-                     bg-clip-text text-transparent">
-          Options de nommage
-        </span>
-    </button>
-  </div>
-
-  <!-- 📌 Intégration du popup -->
-  {#if showRenamePopup}
-    <PopupRename
-      onClose={() => showRenamePopup = false}
-      onRename={handleRename}
-    />
-  {/if}
-{/if}
-
   {#if $activeFilter === 'orphans'}
     <div class="flex items-center gap-6 mt-8">
       <!-- 🚀 Bouton premium pour tout réparer -->
@@ -1535,4 +1412,3 @@
     on:close={closePopup}
   />
 {/if}
-

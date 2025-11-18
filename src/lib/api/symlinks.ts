@@ -130,7 +130,7 @@ export function importSymlinksFromFile(file: File): Promise<any[]> {
  */
 export async function scanMoviesAPI(dryRun: boolean = true) {
   const res = await fetch(
-    `${baseURL}/api/v1/symlinks/movies/scan?dry_run=${dryRun}`,
+    `${baseURL}/api/v1/rename/scan?dry_run=${dryRun}`,
     { method: "POST" }
   );
   return handleResponse(res);
