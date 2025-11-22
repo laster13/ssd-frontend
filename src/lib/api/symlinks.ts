@@ -14,48 +14,53 @@ async function handleResponse(res: Response) {
 
 // --- GET ---
 export async function fetchSymlinks(params: URLSearchParams) {
-  const res = await fetch(`${baseURL}/api/v1/symlinks?${params.toString()}`);
+  const res = await fetch(`${baseURL}/api/v1/symlinks?${params.toString()}`, {
+    credentials: "include",
+  });
   return handleResponse(res);
 }
 
 export async function fetchFolders() {
-  const res = await fetch(`${baseURL}/api/v1/symlinks/folders`);
+  const res = await fetch(`${baseURL}/api/v1/symlinks/folders`, {
+    credentials: "include",
+  });
   return handleResponse(res);
 }
 
 export async function fetchShow(showId: string, instanceId: number | null) {
-  const res = await fetch(`/api/v1/shows/${showId}?instance_id=${instanceId}`);
+  const res = await fetch(
+    `/api/v1/shows/${showId}?instance_id=${instanceId}`,
+    { credentials: "include" }
+  );
   return handleResponse(res);
 }
 
-/**
- * Derniers symlinks (⚡ propre)
- * Utilise le même endpoint /symlinks avec sort=created_at
- */
 export async function fetchLatestSymlinks(params: URLSearchParams) {
   params.set("sort", "created_at");
   params.set("order", "desc");
   if (!params.has("limit")) params.set("limit", "100");
 
-  const res = await fetch(`${baseURL}/api/v1/symlinks?${params.toString()}`);
+  const res = await fetch(`${baseURL}/api/v1/symlinks?${params.toString()}`, {
+    credentials: "include",
+  });
   return handleResponse(res);
 }
 
-/**
- * Doublons
- */
 export async function fetchDuplicates(params?: URLSearchParams) {
   const url = params
     ? `${baseURL}/api/v1/symlinks/duplicates?${params.toString()}`
     : `${baseURL}/api/v1/symlinks/duplicates`;
 
-  const res = await fetch(url);
+  const res = await fetch(url, { credentials: "include" });
   return handleResponse(res);
 }
 
 // --- POST ---
 export async function triggerScanAPI() {
-  const res = await fetch(`${baseURL}/api/v1/symlinks/scan`, { method: "POST" });
+  const res = await fetch(`${baseURL}/api/v1/symlinks/scan`, {
+    method: "POST",
+    credentials: "include",
+  });
   return handleResponse(res);
 }
 
@@ -63,32 +68,43 @@ export async function repairMissingSeasonsAPI(folder?: string) {
   const url =
     `${baseURL}/api/v1/symlinks/repair-missing-seasons` +
     (folder ? `?folder=${encodeURIComponent(folder)}` : "");
-  const res = await fetch(url, { method: "POST" });
+  const res = await fetch(url, {
+    method: "POST",
+    credentials: "include",
+  });
   return handleResponse(res);
 }
 
 export async function deleteBrokenAPI(route: string) {
-  const res = await fetch(`${baseURL}${route}`, { method: "POST" });
+  const res = await fetch(`${baseURL}${route}`, {
+    method: "POST",
+    credentials: "include",
+  });
   return handleResponse(res);
 }
 
 // --- DELETE ---
 export async function deleteSymlinkAPI(route: string) {
-  const res = await fetch(`${baseURL}${route}`, { method: "DELETE" });
+  const res = await fetch(`${baseURL}${route}`, {
+    method: "DELETE",
+    credentials: "include",
+  });
   return handleResponse(res);
 }
 
 // --- ARR URLs ---
 export async function fetchSonarrUrl(relative: string) {
   const res = await fetch(
-    `${baseURL}/api/v1/symlinks/get-sonarr-url/${encodeURIComponent(relative)}`
+    `${baseURL}/api/v1/symlinks/get-sonarr-url/${encodeURIComponent(relative)}`,
+    { credentials: "include" }
   );
   return handleResponse(res);
 }
 
 export async function fetchRadarrUrl(relativeDir: string) {
   const res = await fetch(
-    `${baseURL}/api/v1/symlinks/get-radarr-url/${encodeURIComponent(relativeDir)}`
+    `${baseURL}/api/v1/symlinks/get-radarr-url/${encodeURIComponent(relativeDir)}`,
+    { credentials: "include" }
   );
   return handleResponse(res);
 }
@@ -123,36 +139,31 @@ export function importSymlinksFromFile(file: File): Promise<any[]> {
 }
 
 // --- Renommage (Radarr / Sonarr / Global) ---
-
-/**
- * Scan et renomme les films via Radarr
- * @param dryRun true = simulation, false = exécution réelle
- */
 export async function scanMoviesAPI(dryRun: boolean = true) {
   const res = await fetch(
     `${baseURL}/api/v1/rename/scan?dry_run=${dryRun}`,
-    { method: "POST" }
+    {
+      method: "POST",
+      credentials: "include",
+    }
   );
   return handleResponse(res);
 }
 
-/**
- * Scan et renomme les séries via Sonarr
- * @param dryRun true = simulation, false = exécution réelle
- */
 export async function scanSeriesAPI(dryRun: boolean = true) {
   const res = await fetch(
     `${baseURL}/api/v1/symlinks/series/scan?dry_run=${dryRun}`,
-    { method: "POST" }
+    {
+      method: "POST",
+      credentials: "include",
+    }
   );
   return handleResponse(res);
 }
 
-/**
- * Scan global des bibliothèques (movies + séries)
- */
 export async function scanLibrariesAPI() {
-  const res = await fetch(`${baseURL}/api/v1/symlinks/libraries`);
+  const res = await fetch(`${baseURL}/api/v1/symlinks/libraries`, {
+    credentials: "include",
+  });
   return handleResponse(res);
 }
-

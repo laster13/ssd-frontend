@@ -8,7 +8,8 @@
   const backendVersion = writable("—");
   const frontendVersion = writable("—");
   const connectionStatus = writable("connected");
-  const updating = writable(false);
+  const updatingBackend = writable(false);
+  const updatingFrontend = writable(false);
   const updateMessage = writable("");
   const updateData = writable(null);
   const logs = writable<any[]>([]);
@@ -92,12 +93,13 @@
 
   // --- Lancement manuel d'une mise à jour
   async function runUpdate(target: "backend" | "frontend") {
-    updating.set(true);
+    if (target === "backend") updatingBackend.set(true);
+    if (target === "frontend") updatingFrontend.set(true);
+
     const label = target.toUpperCase();
     updateMessage.set(`🔧 Mise à jour ${label} en cours...`);
     log(`Mise à jour ${label} démarrée...`, "update");
 
-    // 🧩 Stoppe l’auto-check pendant la mise à jour
     if (autoCheckInterval) clearInterval(autoCheckInterval);
     autoCheckInterval = null;
 
@@ -108,7 +110,6 @@
       log(data.message, "update");
       showToast(`✅ ${label} mis à jour avec succès`, "success");
 
-      // 🧹 Efface la bannière après succès
       updateNotification.set(null);
       await loadPersistentNotification();
     } catch {
@@ -116,8 +117,9 @@
       log("Erreur réseau pendant la mise à jour.", "error");
       showToast("❌ Erreur réseau pendant la mise à jour", "error");
     } finally {
-      updating.set(false);
-      // 🔁 Relance l’auto-check après MAJ
+      if (target === "backend") updatingBackend.set(false);
+      if (target === "frontend") updatingFrontend.set(false);
+
       startAutoCheck();
     }
   }
@@ -148,9 +150,12 @@
         updateMessage.set(data.message);
         log(data.message, "update");
         showToast(data.message, "info");
-        updating.set(false);
 
-        // ✅ On recharge les infos de version uniquement pour une vraie mise à jour
+        // 🔧 Stop spinner spécifique
+        if (evt.includes("backend")) updatingBackend.set(false);
+        if (evt.includes("frontend")) updatingFrontend.set(false);
+
+        // ✅ Recharge les versions
         await loadVersions();
 
         // 🔔 Bannière globale
@@ -168,21 +173,21 @@
       updateMessage.set(data.message);
       log(data.message, "update");
       showToast(data.message, "success");
-      updating.set(false);
 
-      // ✅ Recharge les versions seulement ici
+      // 🔧 Stop both spinners
+      updatingBackend.set(false);
+      updatingFrontend.set(false);
+
+      // 🔁 Recharge versions
       await loadVersions();
 
-      // 🧹 Efface la bannière et recharge depuis DB
+      // 🧹 Nettoyage bannière
       updateNotification.set(null);
       await loadPersistentNotification();
 
-      // 🔁 Relance l’auto-check après mise à jour
+      // 🔁 Relance auto-check
       startAutoCheck();
     });
-
-    // ⚙️ Les autres events (symlinks, Discord, etc.) sont ignorés
-    // → plus de /update/check intempestif
   }
 
   // --- Auto-check périodique (toutes les 15 min)
@@ -264,8 +269,10 @@
         <button
           class="mt-4 bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-lg w-full font-semibold flex justify-center items-center gap-2 transition disabled:opacity-60"
           on:click={() => runUpdate("backend")}
-          disabled={$updating}>
-          {#if $updating}<span class="loader w-4 h-4 border-2 border-t-transparent rounded-full animate-spin"></span>{/if}
+          disabled={$updatingBackend}>
+          {#if $updatingBackend}
+            <span class="loader w-4 h-4 border-2 border-t-transparent rounded-full animate-spin"></span>
+          {/if}
           🚀 Mettre à jour le backend
         </button>
       {:else}
@@ -281,8 +288,10 @@
         <button
           class="mt-4 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg w-full font-semibold flex justify-center items-center gap-2 transition disabled:opacity-60"
           on:click={() => runUpdate("frontend")}
-          disabled={$updating}>
-          {#if $updating}<span class="loader w-4 h-4 border-2 border-t-transparent rounded-full animate-spin"></span>{/if}
+          disabled={$updatingFrontend}>
+          {#if $updatingFrontend}
+            <span class="loader w-4 h-4 border-2 border-t-transparent rounded-full animate-spin"></span>
+          {/if}
           🎨 Mettre à jour le frontend
         </button>
       {:else}

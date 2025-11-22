@@ -122,19 +122,6 @@
     refreshList();
   }
 
-  async function loadLibraries() {
-    try {
-      const res = await fetch(`${baseURL}/api/v1/symlinks/libraries`);
-      if (!res.ok) throw new Error("Erreur API libraries");
-      const data = await res.json();
-      const totalMissing = (data.movies?.imdb_missing || 0) + (data.shows?.imdb_missing || 0);
-      imdbMissing.set(totalMissing);
-    } catch (err) {
-      console.error("❌ Erreur loadLibraries:", err);
-      imdbMissing.set(0);
-    }
-  }
-
   // --- Open in Arr (Sonarr / Radarr) ---
   async function openArr(item: any) {
     const { root, relative } = relativeToRoot(item.symlink);
@@ -206,44 +193,89 @@
     }
   }
 
-  // --- Supprimer tous les symlinks cassés ---
-  async function deleteAllBrokenSymlinks() {
-    if (!confirm("🗑️ Supprimer tous les symlinks cassés sélectionnés ?")) return;
-    const folder = (get(selectedDir) ?? '').trim();
-    const routes = folder
-      ? [
-          `/api/v1/symlinks/delete_broken_sonarr?folder=${encodeURIComponent(folder)}`,
-          `/api/v1/symlinks/delete_broken?folder=${encodeURIComponent(folder)}`
-        ]
-      : ['/api/v1/symlinks/delete_broken_sonarr', '/api/v1/symlinks/delete_broken'];
+// Détecter quels managers ont des symlinks cassés
+function detectManagersWithBroken(folder?: string) {
+  const list = get(symlinks);
 
-    bulkDeleting.set(true);
-    bulkDeleteSuccess.set(false);
+  // Filtrage fiable sur la racine
+  const filtered = folder
+    ? list.filter(i => {
+        const path = i.symlink.replace(/\\/g, "/");
+        // Vérifie si le chemin commence par /Medias/<folder>
+        return path.includes(`/Medias/${folder}`);
+      })
+    : list;
 
-    const results = await Promise.allSettled(
-      routes.map(r =>
-        deleteBrokenAPI(r).catch(e => {
-          logs.update(l => [`❌ ${r} — ${e.message}`, ...l]);
-          return { deleted: 0 };
-        })
-      )
+  const hasRadarr = filtered.some(i => !i.target_exists && i.manager === "radarr");
+  const hasSonarr = filtered.some(i => !i.target_exists && i.manager === "sonarr");
+
+  return { hasRadarr, hasSonarr };
+}
+
+function getRoutesForBroken(folder?: string): string[] {
+  const { hasRadarr, hasSonarr } = detectManagersWithBroken(folder);
+
+  const routes: string[] = [];
+
+  if (hasRadarr) {
+    routes.push(
+      folder
+        ? `/api/v1/symlinks/delete_broken?folder=${encodeURIComponent(folder)}`
+        : `/api/v1/symlinks/delete_broken`
     );
-
-    const totalDeleted = results.reduce(
-      (sum, r) =>
-        sum + (r.status === 'fulfilled' ? Number((r.value as any).deleted) || 0 : 0),
-      0
-    );
-
-    logs.update(l => [`🧹 Total supprimé : ${totalDeleted}`, ...l]);
-
-    // ✅ Met à jour la liste et les compteurs depuis le backend
-    await refreshList();
-
-    bulkDeleteSuccess.set(true);
-    setTimeout(() => bulkDeleteSuccess.set(false), 3000);
-    bulkDeleting.set(false);
   }
+
+  if (hasSonarr) {
+    routes.push(
+      folder
+        ? `/api/v1/symlinks/delete_broken_sonarr?folder=${encodeURIComponent(folder)}`
+        : `/api/v1/symlinks/delete_broken_sonarr`
+    );
+  }
+
+  return routes;
+}
+
+
+// --- Supprimer tous les symlinks cassés ---
+async function deleteAllBrokenSymlinks() {
+
+  if (!confirm("🗑️ Supprimer tous les symlinks cassés détectés ?")) return;
+
+  const folder = (get(selectedDir) ?? "").trim();
+  const routes = getRoutesForBroken(folder);
+
+  if (routes.length === 0) {
+    logs.update(l => ["ℹ️ Aucun symlink cassé détecté.", ...l]);
+    return;
+  }
+
+  bulkDeleting.set(true);
+  bulkDeleteSuccess.set(false);
+
+  let totalDeleted = 0;
+
+  for (const route of routes) {
+    try {
+      const result = await deleteBrokenAPI(route);
+      const deleted = Number(result.deleted) || 0;
+      totalDeleted += deleted;
+
+      logs.update(l => [`🧹 ${route} → supprimé : ${deleted}`, ...l]);
+
+    } catch (e: any) {
+      logs.update(l => [`❌ ${route} — ${e.message}`, ...l]);
+    }
+  }
+
+  logs.update(l => [`🧹 Total supprimé : ${totalDeleted}`, ...l]);
+
+  await refreshList();
+
+  bulkDeleteSuccess.set(true);
+  setTimeout(() => bulkDeleteSuccess.set(false), 3000);
+  bulkDeleting.set(false);
+}
 
   // --- Supprimer un symlink ---
   async function deleteSymlink(item: any) {
@@ -501,12 +533,6 @@
     connectSSE();
   });
 
-  // 🔁 Dès que la config est prête => auto /libraries
-  $: if (mounted && get(availableDirs).length > 0) {
-    console.log("⚡ Config.json détectée, chargement des libraries...");
-    loadLibraries();
-  }
-
   // --- SSE ---
   function connectSSE() {
     const eventSource = new EventSource(`${baseURL}/api/v1/symlinks/events`);
@@ -630,7 +656,6 @@
         if (refreshNeeded) {
           await refreshList();      // ⚙️ recharge symlinks + compteurs
           await loadLatestSymlinks();
-          await loadLibraries();    // recharge imdbMissing
         }
 
       } catch (err) {

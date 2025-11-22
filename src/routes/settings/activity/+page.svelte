@@ -200,6 +200,33 @@
 		}
 	}
 
+        async function deleteOne(id: number | string) {
+            try {
+                const url =
+                    window.location.protocol === "https:"
+                        ? import.meta.env.VITE_BACKEND_URL_HTTPS
+                        : import.meta.env.VITE_BACKEND_URL_HTTP;
+
+                const resp = await fetch(`${url}/api/v1/system-activities/${id}`, {
+                    method: "DELETE",
+                    credentials: "include",
+                });
+
+                if (!resp.ok) throw new Error("Erreur API delete");
+
+                // Mise à jour locale immédiate
+                activities.update((list) => {
+                    const updated = list.filter((a) => a.id !== id);
+                    localStorage.setItem("symlink_activities", JSON.stringify(updated));
+                    return updated;
+                });
+
+            } catch (e) {
+                console.error("❌ Erreur suppression activité:", e);
+                alert("Erreur lors de la suppression");
+            }
+        }
+
         // ✅ SSE avec logs détaillés
         function connectSSE() {
                 if (!browser) return;
@@ -627,23 +654,39 @@
 									<div class="text-sm text-muted-foreground">{formatDate(a.time)}</div>
 								</div>
 
-								<pre class="mt-1 text-sm text-foreground whitespace-pre-wrap break-all">{a.path}</pre>
+                                                                <pre class="mt-1 text-sm text-foreground whitespace-pre-wrap break-all">{a.path}</pre>
 
-								{#if a.action === "deleted"}
-									{#if a.replaced === true}
-										<div class="mt-2 text-sm text-purple-400">
-											♻️ Remplacé le {formatDate(a.replaced_at)}
-										</div>
-									{:else if a.replaced === false}
-										<div class="mt-2 text-sm text-rose-400">
-											❌ Non remplacé après suppression
-										</div>
-									{:else}
-										<div class={`mt-2 text-sm ${currentFilter === "not_replaced" ? "text-violet-400" : "text-muted-foreground"}`}>
-											⏳ En attente de remplacement
-										</div>
-									{/if}
-								{/if}
+                                                                {#if a.action === "deleted"}
+                                                                    {#if a.replaced === true}
+                                                                        <div class="mt-2 text-sm text-purple-400">
+                                                                            ♻️ Remplacé le {formatDate(a.replaced_at)}
+                                                                        </div>
+
+                                                                    {:else if a.replaced === false}
+                                                                        <div class="mt-2 flex items-center justify-between text-sm text-rose-400">
+                                                                            <span>❌ Non remplacé après suppression</span>
+
+                                                                            <button
+                                                                                on:click={() => deleteOne(a.id)}
+                                                                                class="px-2 py-1 text-xs rounded-md bg-rose-700/20 hover:bg-rose-700/40 border border-rose-700/40 text-rose-300 transition"
+                                                                            >
+                                                                                🗑️
+                                                                            </button>
+                                                                        </div>
+
+                                                                    {:else}
+                                                                        <div class="mt-2 flex items-center justify-between text-sm text-violet-400">
+                                                                            <span>⏳ En attente de remplacement</span>
+
+                                                                            <button
+                                                                                on:click={() => deleteOne(a.id)}
+                                                                                class="px-2 py-1 text-xs rounded-md bg-violet-700/20 hover:bg-violet-700/40 border border-violet-700/40 text-violet-300 transition"
+                                                                            >
+                                                                                🗑️
+                                                                            </button>
+                                                                        </div>
+                                                                    {/if}
+                                                                {/if}
 
 								<div class="mt-2 text-xs text-muted-foreground">
 									{a.manager ? `Géré par : ${a.manager}` : ""}
