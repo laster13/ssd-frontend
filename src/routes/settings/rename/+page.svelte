@@ -1,39 +1,161 @@
 <script lang="ts">
-	import { onMount } from "svelte";
-	import ScanHeader from "$lib/components/ScanHeader.svelte";
-	import CategoryCard from "$lib/components/CategoryCard.svelte";
-	import CardItem from "$lib/components/CardItem.svelte";
+    import {
+        renameItem,
+        fixIMDB,
+        deleteFromRadarr,
+        reimportRadarr,
+        runScanOnly as runScanMovies,
+        runScan as runScanMoviesFull,
+        stats as movieStats,
+        details as movieDetails,
+        selectedCategory as movieCategory,
+        page as moviePage,
+        statLabels as movieLabels,
+        loadingScanOnly as movieLoadingOnly,
+        loadingScanFull as movieLoadingFull
+    } from "$lib/stores/movies";
 
-	import {
-		runScanOnly,
-		stats,
-		details,
-		selectedCategory,
-		page,
-		statLabels,
-		loadingScanOnly,
-		loadingScanFull
-	} from "$lib/stores/movies";
+    /* ------------------------------------------
+       COMPOSANTS
+    ------------------------------------------ */
+    import ScanHeader from "$lib/components/ScanHeader.svelte";
+    import CategoryCard from "$lib/components/CategoryCard.svelte";
+    import CardItem from "$lib/components/CardItem.svelte";
 
-	let dryRun = false;
-	let sentinel: HTMLElement;
+    /* ------------------------------------------
+       STORES SÉRIES
+    ------------------------------------------ */
+    import {
+        runScanOnly as runScanSeries,
+        runScanFull as runScanSeriesFull,
+        stats as seriesStats,
+        details as seriesDetails,
+        selectedCategory as seriesCategory,
+        page as seriesPage,
+        statLabels as seriesLabels,
+        loadingScanOnly as seriesLoadingOnly,
+        loadingScanFull as seriesLoadingFull,
+        renameSeries,
+        fixSeriesIMDB,
+        deleteFromSonarr,
+        reimportSonarr
+    } from "$lib/stores/series";
 
-	onMount(() => {
-		runScanOnly();
-	});
+    /* ------------------------------------------
+       ÉTAT LOCAL
+    ------------------------------------------ */
+    let mode: "movies" | "series" = "movies";
+    let dryRun = false;
+    let sentinel: HTMLElement;
 
-	/* -------------------------------------
-	   CALCUL LOCAL → FINI LE BUG SSR
-	-------------------------------------- */
-	$: visible =
-		$selectedCategory && $details[$selectedCategory]
-			? $details[$selectedCategory].slice(0, $page * 100)
-			: [];
+    /* ------------------------------------------
+       RÉACTIVITÉ STORES PARTAGÉS
+    ------------------------------------------ */
+
+    $: activeStats =
+        mode === "movies" ? $movieStats : $seriesStats;
+
+    $: activeDetails =
+        mode === "movies" ? $movieDetails : $seriesDetails;
+
+    $: activeSelected =
+        mode === "movies" ? $movieCategory : $seriesCategory;
+
+    $: activePage =
+        mode === "movies" ? $moviePage : $seriesPage;
+
+    $: activeLabels =
+        mode === "movies" ? movieLabels : seriesLabels;
+
+    $: activeLoadingOnly =
+        mode === "movies" ? $movieLoadingOnly : $seriesLoadingOnly;
+
+    $: activeLoadingFull =
+        mode === "movies" ? $movieLoadingFull : $seriesLoadingFull;
+
+    /* ------------------------------------------
+       LISTE PAGINÉE
+    ------------------------------------------ */
+    $: visible =
+        activeSelected && activeDetails[activeSelected]
+            ? activeDetails[activeSelected].slice(0, activePage * 100)
+            : [];
+
+    /* ------------------------------------------
+       SWITCH FILMS / SÉRIES
+    ------------------------------------------ */
+    function switchMode(newMode: "movies" | "series") {
+        if (mode === newMode) return;
+
+        mode = newMode;
+
+        if (mode === "movies") {
+            movieCategory.set(null);
+            moviePage.set(1);
+            runScanMovies();
+        } else {
+            seriesCategory.set(null);
+            seriesPage.set(1);
+            runScanSeries();
+        }
+    }
+
+    /* ------------------------------------------
+       CALLBACKS POUR ScanHeader
+    ------------------------------------------ */
+    function handleScanOnly() {
+        if (mode === "movies") {
+            runScanMovies();
+        } else {
+            runScanSeries();
+        }
+    }
+
+    function handleScanFull(dry: boolean) {
+        if (mode === "movies") {
+            runScanMoviesFull(dry);
+        } else {
+            runScanSeriesFull(dry);
+        }
+    }
 </script>
 
-<ScanHeader {dryRun} />
+<!-- HEADER -->
+<ScanHeader
+    {dryRun}
+    {mode}
+    loadingOnly={activeLoadingOnly}
+    loadingFull={activeLoadingFull}
+    onScanOnly={handleScanOnly}
+    onScanFull={handleScanFull}
+/>
 
 <main class="mx-auto max-w-7xl px-4 pb-16">
+
+    <!-- SWITCH -->
+    <div class="flex justify-center gap-4 mt-4 mb-8">
+        <button
+            class="px-4 py-2 rounded-lg shadow text-sm font-semibold
+                {mode === 'movies'
+                    ? 'bg-blue-600 text-white'
+                    : 'bg-gray-200 dark:bg-gray-700'}"
+            on:click={() => switchMode("movies")}
+        >
+            🎬 Radarr
+        </button>
+
+        <button
+            class="px-4 py-2 rounded-lg shadow text-sm font-semibold
+                {mode === 'series'
+                    ? 'bg-blue-600 text-white'
+                    : 'bg-gray-200 dark:bg-gray-700'}"
+            on:click={() => switchMode("series")}
+        >
+            📺 Sonarr
+        </button>
+    </div>
+
+    <!-- INFO FORMAT -->
 
 	<div
 		class="
@@ -135,53 +257,78 @@
 					>
 						Procédure recommandée :
 					</strong>
-					supprimer d'abord le fichier de Radarr, effectuer l’édition locale,
+					supprimer d'abord le fichier dans Sonarr & Radarr, effectuer l’édition locale,
 					puis lancer le réimport à l’aide des boutons d’action situés à droite.
 					<br />
 					Cela garantit une synchronisation propre et évite toute incohérence
 					dans vos bibliothèques.
                                         <br />
-                                        En cas de renommage massif de vos médias, il est recommandé de supprimer entièrement la bibliothèque dans Radarr, puis d’effectuer une réimportation complète.
+                                        En cas de renommage massif de vos médias, il est recommandé de supprimer entièrement la bibliothèque dans Sonarr & Radarr, puis d’effectuer une réimportation complète.
 				</p>
 			</div>
 		</div>
 
 	</div>
 
-	<!-- Résumé categories -->
-	{#if $stats}
-		<div class="mt-6 mb-10 p-6 rounded-2xl border shadow-xl">
-			<div
-				class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3"
-			>
-				{#each Object.keys(statLabels).filter((k) => k !== "total") as cat}
-					<CategoryCard {cat} />
-				{/each}
-			</div>
-		</div>
-	{/if}
+    <!-- CATEGORY CARDS -->
+    {#if activeStats}
+        <div class="mt-6 mb-10 p-6 rounded-2xl border shadow-xl">
+            <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+                {#each Object.keys(activeLabels).filter((k) => k !== "total") as cat}
+                    <CategoryCard
+                        {cat}
+                        labels={activeLabels}
+                        stats={activeStats}
+                        on:select={(e) => {
+                            const c = e.detail;
+                            if (mode === "movies") {
+                                movieCategory.set(c);
+                                moviePage.set(1);
+                            } else {
+                                seriesCategory.set(c);
+                                seriesPage.set(1);
+                            }
+                        }}
+                    />
+                {/each}
+            </div>
+        </div>
+    {/if}
 
-	<!-- Liste détaillée -->
-	{#if $selectedCategory && $details[$selectedCategory]}
-		<h3 class="text-lg font-semibold mb-4">
-			{statLabels[$selectedCategory].label}
-			<small>({$details[$selectedCategory].length})</small>
-		</h3>
+    <!-- LISTE DÉTAILLÉE -->
+    {#if activeSelected && activeDetails[activeSelected]}
+        <h3 class="text-lg font-semibold mb-4">
+            {activeLabels[activeSelected].label}
+            <small>({activeDetails[activeSelected].length})</small>
+        </h3>
 
-		<div class="space-y-4">
-			{#each visible as item (item.original)}
-				<CardItem {item} category={$selectedCategory} />
-			{/each}
-		</div>
+        <div class="space-y-4">
+            {#each visible as item (item.original ?? item.folder)}
+                <CardItem
+                    {item}
+                    category={activeSelected}
+                    labels={activeLabels}
+                    mode={mode}
+                    actions={{
+                        rename: mode === "movies" ? renameItem : renameSeries,
+                        fix: mode === "movies" ? fixIMDB : fixSeriesIMDB,
+                        delete: mode === "movies" ? deleteFromRadarr : deleteFromSonarr,
+                        reimport: mode === "movies" ? reimportRadarr : reimportSonarr
+                    }}
+                />
+            {/each}
+        </div>
 
-		<div bind:this={sentinel} class="h-10"></div>
-	{/if}
+        <div bind:this={sentinel} class="h-10"></div>
+    {/if}
 
-	<!-- LOADING -->
-	{#if $loadingScanOnly || $loadingScanFull}
-		<div class="text-center py-16 text-muted-foreground animate-pulse">
-			Analyse en cours...
-		</div>
-	{/if}
-
+    <!-- LOADING -->
+    {#if
+        $movieLoadingOnly || $movieLoadingFull ||
+        $seriesLoadingOnly || $seriesLoadingFull
+    }
+        <div class="text-center py-16 animate-pulse">
+            Analyse en cours...
+        </div>
+    {/if}
 </main>

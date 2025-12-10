@@ -6,6 +6,22 @@
   export let onOpenPopup: (item: any) => void;
   export let onOpenArr: (item: any) => void;
   export let onDelete: (item: any) => void;
+
+  // 🕒 Formatage safe d'une datetime ISO Python (avec microsecondes)
+  function formatDateTime(iso: string | null | undefined): string {
+    if (!iso || typeof iso !== "string") return "";
+
+    // On vire la partie microsecondes si présente (".123456")
+    const [datePart, rest] = iso.split("T");
+    if (!rest) return iso;
+
+    const timePart = rest.split(".")[0]; // "09:29:09.175265" -> "09:29:09"
+
+    const [year, month, day] = datePart.split("-");
+    if (!year || !month || !day) return iso;
+
+    return `${day}/${month}/${year} ${timePart}`;
+  }
 </script>
 
 <div
@@ -25,9 +41,9 @@
     ↳ {item.target}
   </p>
 
-  {#if item.ref_count > 1 && item.created_at}
+  {#if item.created_at}
     <p class="mt-1 text-xs text-yellow-600 dark:text-yellow-400 font-medium">
-      📅 Ajouté le {new Date(item.created_at).toLocaleString()}
+      📅 Ajouté le {formatDateTime(item.created_at)}
     </p>
   {/if}
 

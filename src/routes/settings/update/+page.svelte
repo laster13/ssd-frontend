@@ -3,15 +3,15 @@
   import { writable, get, derived } from "svelte/store";
   import { fade, scale } from "svelte/transition";
   import { updateNotification } from "$lib/stores/symlinks";
+  import { connectionStatus } from "$lib/updateClient";
 
   const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
   const backendVersion = writable("—");
   const frontendVersion = writable("—");
-  const connectionStatus = writable("connected");
   const updatingBackend = writable(false);
   const updatingFrontend = writable(false);
   const updateMessage = writable("");
-  const updateData = writable(null);
+  const updateData = writable<any | null>(null);
   const logs = writable<any[]>([]);
   const filter = writable("all");
   const toast = writable<{ msg: string; type: string } | null>(null);
@@ -113,9 +113,6 @@
       updateNotification.set(null);
       await loadPersistentNotification();
     } catch {
-      updateMessage.set("❌ Erreur réseau pendant la mise à jour.");
-      log("Erreur réseau pendant la mise à jour.", "error");
-      showToast("❌ Erreur réseau pendant la mise à jour", "error");
     } finally {
       if (target === "backend") updatingBackend.set(false);
       if (target === "frontend") updatingFrontend.set(false);
@@ -129,65 +126,6 @@
     logs.set([]);
     localStorage.removeItem("updateLogs");
     showToast("🧹 Journal effacé", "info");
-  }
-
-  // --- Connexion SSE
-  function connectSSE() {
-    const sse = new EventSource(`${API_BASE_URL}/symlinks/events`);
-
-    sse.onopen = async () => {
-      connectionStatus.set("connected");
-      await loadVersions();
-      await loadPersistentNotification();
-    };
-
-    sse.onerror = () => connectionStatus.set("disconnected");
-
-    // ⚡ Événements de mise à jour (et seulement eux)
-    ["update_available_backend", "update_available_frontend"].forEach((evt) => {
-      sse.addEventListener(evt, async (event) => {
-        const data = JSON.parse(event.data);
-        updateMessage.set(data.message);
-        log(data.message, "update");
-        showToast(data.message, "info");
-
-        // 🔧 Stop spinner spécifique
-        if (evt.includes("backend")) updatingBackend.set(false);
-        if (evt.includes("frontend")) updatingFrontend.set(false);
-
-        // ✅ Recharge les versions
-        await loadVersions();
-
-        // 🔔 Bannière globale
-        updateNotification.set({
-          type: evt.includes("backend") ? "backend" : "frontend",
-          message: data.message,
-          version: data.version || null,
-        });
-      });
-    });
-
-    // ✅ Événement de mise à jour terminée
-    sse.addEventListener("update_finished", async (event) => {
-      const data = JSON.parse(event.data);
-      updateMessage.set(data.message);
-      log(data.message, "update");
-      showToast(data.message, "success");
-
-      // 🔧 Stop both spinners
-      updatingBackend.set(false);
-      updatingFrontend.set(false);
-
-      // 🔁 Recharge versions
-      await loadVersions();
-
-      // 🧹 Nettoyage bannière
-      updateNotification.set(null);
-      await loadPersistentNotification();
-
-      // 🔁 Relance auto-check
-      startAutoCheck();
-    });
   }
 
   // --- Auto-check périodique (toutes les 15 min)
@@ -212,14 +150,14 @@
 
     loadVersions();
     loadPersistentNotification();
-    connectSSE();
     startAutoCheck();
   });
 </script>
 
 <!-- ===== PAGE ===== -->
-<div class="max-w-5xl mx-auto my-10 px-4 py-8 rounded-2xl shadow-lg transition bg-white dark:bg-neutral-900 text-neutral-900 dark:text-white border border-neutral-200 dark:border-neutral-700 space-y-8">
-
+<div
+  class="max-w-5xl mx-auto my-10 px-4 py-8 rounded-2xl shadow-lg transition bg-white dark:bg-neutral-900 text-neutral-900 dark:text-white border border-neutral-200 dark:border-neutral-700 space-y-8"
+>
   <!-- TOAST -->
   {#if $toast}
     <div
@@ -239,19 +177,27 @@
       <h1 class="text-2xl sm:text-3xl font-bold text-emerald-500 dark:text-emerald-400 flex items-center gap-2">
         🔄 Gestion des mises à jour
       </h1>
-      <p class="text-gray-500 dark:text-gray-400 text-sm">Suivez, mettez à jour et consultez l’historique du système</p>
+      <p class="text-gray-500 dark:text-gray-400 text-sm">
+        Suivez, mettez à jour et consultez l’historique du système
+      </p>
     </div>
-    <span class={`text-sm font-semibold ${$connectionStatus === 'connected' ? 'text-green-600 dark:text-green-400' : 'text-gray-500'}`}>
+    <span
+      class={`text-sm font-semibold ${
+        $connectionStatus === 'connected' ? 'text-green-600 dark:text-green-400' : 'text-gray-500'
+      }`}
+    >
       {$connectionStatus === 'connected' ? '🟢 Connecté' : '🕓 Reconnexion...'}
     </span>
   </header>
 
   <!-- ÉTAT GLOBAL -->
-  <div class={`p-4 rounded-xl text-center transition-all duration-300 ${
-    $updateData?.update_available
-      ? 'bg-amber-100 dark:bg-amber-900/30 border border-amber-400 dark:border-amber-700 animate-pulse'
-      : 'bg-emerald-50 dark:bg-green-900/20 border border-green-400 dark:border-green-700'
-  }`}>
+  <div
+    class={`p-4 rounded-xl text-center transition-all duration-300 ${
+      $updateData?.update_available
+        ? 'bg-amber-100 dark:bg-amber-900/30 border border-amber-400 dark:border-amber-700 animate-pulse'
+        : 'bg-emerald-50 dark:bg-green-900/20 border border-green-400 dark:border-green-700'
+    }`}
+  >
     <p class="text-lg font-medium">
       {$updateData?.update_available
         ? `🚀 Des mises à jour sont disponibles !`
@@ -261,15 +207,20 @@
 
   <!-- CARTES -->
   <div class="grid grid-cols-1 sm:grid-cols-2 gap-6">
-    <div class="p-6 rounded-xl bg-neutral-100 dark:bg-neutral-800 border border-neutral-300 dark:border-neutral-700 hover:shadow-lg transition">
+    <div
+      class="p-6 rounded-xl bg-neutral-100 dark:bg-neutral-800 border border-neutral-300 dark:border-neutral-700 hover:shadow-lg transition"
+    >
       <h2 class="text-xl font-semibold mb-2 flex items-center gap-2">📦 Backend</h2>
       <p class="text-2xl font-mono">{$backendVersion}</p>
       {#if $updateData?.backend?.has_update}
-        <p class="text-amber-600 dark:text-amber-400 text-sm mt-2">Nouvelle version : {$updateData.backend.remote}</p>
+        <p class="text-amber-600 dark:text-amber-400 text-sm mt-2">
+          Nouvelle version : {$updateData.backend.remote}
+        </p>
         <button
           class="mt-4 bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-lg w-full font-semibold flex justify-center items-center gap-2 transition disabled:opacity-60"
           on:click={() => runUpdate("backend")}
-          disabled={$updatingBackend}>
+          disabled={$updatingBackend}
+        >
           {#if $updatingBackend}
             <span class="loader w-4 h-4 border-2 border-t-transparent rounded-full animate-spin"></span>
           {/if}
@@ -280,15 +231,20 @@
       {/if}
     </div>
 
-    <div class="p-6 rounded-xl bg-neutral-100 dark:bg-neutral-800 border border-neutral-300 dark:border-neutral-700 hover:shadow-lg transition">
+    <div
+      class="p-6 rounded-xl bg-neutral-100 dark:bg-neutral-800 border border-neutral-300 dark:border-neutral-700 hover:shadow-lg transition"
+    >
       <h2 class="text-xl font-semibold mb-2 flex items-center gap-2">💅 Frontend</h2>
       <p class="text-2xl font-mono">{$frontendVersion}</p>
       {#if $updateData?.frontend?.has_update}
-        <p class="text-amber-600 dark:text-amber-400 text-sm mt-2">Nouvelle version : {$updateData.frontend.remote}</p>
+        <p class="text-amber-600 dark:text-amber-400 text-sm mt-2">
+          Nouvelle version : {$updateData.frontend.remote}
+        </p>
         <button
           class="mt-4 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg w-full font-semibold flex justify-center items-center gap-2 transition disabled:opacity-60"
           on:click={() => runUpdate("frontend")}
-          disabled={$updatingFrontend}>
+          disabled={$updatingFrontend}
+        >
           {#if $updatingFrontend}
             <span class="loader w-4 h-4 border-2 border-t-transparent rounded-full animate-spin"></span>
           {/if}
@@ -307,94 +263,100 @@
     </div>
   {/if}
 
-<!-- JOURNAL -->
-<div class="rounded-xl border border-neutral-300 dark:border-neutral-700 bg-neutral-100 dark:bg-neutral-800 overflow-hidden">
-  <!-- Header -->
-  <div class="flex flex-col sm:flex-row sm:justify-between sm:items-center p-4 gap-2 bg-neutral-200 dark:bg-neutral-900 border-b border-neutral-300 dark:border-neutral-700">
-    <h2 class="pl-2 text-lg font-semibold text-emerald-700 dark:text-emerald-300 flex items-center gap-2">
-      🗒️ Journal des mises à jour
-    </h2>
+  <!-- JOURNAL -->
+  <div
+    class="rounded-xl border border-neutral-300 dark:border-neutral-700 bg-neutral-100 dark:bg-neutral-800 overflow-hidden"
+  >
+    <!-- Header -->
+    <div
+      class="flex flex-col sm:flex-row sm:justify-between sm:items-center p-4 gap-2 bg-neutral-200 dark:bg-neutral-900 border-b border-neutral-300 dark:border-neutral-700"
+    >
+      <h2 class="pl-2 text-lg font-semibold text-emerald-700 dark:text-emerald-300 flex items-center gap-2">
+        🗒️ Journal des mises à jour
+      </h2>
 
-    <!-- Barre de boutons responsive -->
-    <div class="flex flex-wrap sm:flex-nowrap gap-2 overflow-x-auto pb-1 sm:pb-0 -mx-1 px-1 scrollbar-hide">
-      <button
-        class={`px-2 py-1 text-sm rounded ${
-          $filter === 'all'
-            ? 'bg-emerald-600 text-white'
-            : 'bg-neutral-300 dark:bg-neutral-700'
-        }`}
-        on:click={() => filter.set('all')}
+      <!-- Barre de boutons responsive -->
+      <div
+        class="flex flex-wrap sm:flex-nowrap gap-2 overflow-x-auto pb-1 sm:pb-0 -mx-1 px-1 scrollbar-hide"
       >
-        Tous
-      </button>
-      <button
-        class={`px-2 py-1 text-sm rounded ${
-          $filter === 'update'
-            ? 'bg-emerald-600 text-white'
-            : 'bg-neutral-300 dark:bg-neutral-700'
-        }`}
-        on:click={() => filter.set('update')}
-      >
-        Mises à jour
-      </button>
-      <button
-        class={`px-2 py-1 text-sm rounded ${
-          $filter === 'error'
-            ? 'bg-emerald-600 text-white'
-            : 'bg-neutral-300 dark:bg-neutral-700'
-        }`}
-        on:click={() => filter.set('error')}
-      >
-        Erreurs
-      </button>
-      <button
-        class="px-2 py-1 text-sm rounded bg-red-600 hover:bg-red-700 text-white"
-        on:click={clearLogs}
-      >
-        🧹 Effacer
-      </button>
-      <button
-        class="px-2 py-1 text-sm rounded bg-neutral-400 dark:bg-neutral-700 hover:bg-neutral-500"
-        on:click={() => journalOpen.update((v) => !v)}
-      >
-        {$journalOpen ? '🔽 Réduire' : '▶️ Ouvrir'}
-      </button>
-    </div>
-  </div>
-
-  <!-- Contenu du journal -->
-  {#if $journalOpen}
-    <div class="p-4 max-h-72 overflow-auto divide-y divide-neutral-300 dark:divide-neutral-700">
-      {#each $filteredLogs as log (log.ts)}
-        <div
-          class="py-2 sm:py-1 flex flex-col sm:flex-row sm:items-center sm:space-x-3 
-                 hover:bg-neutral-200/50 dark:hover:bg-neutral-700/30 rounded-lg px-2 transition"
+        <button
+          class={`px-2 py-1 text-sm rounded ${
+            $filter === 'all' ? 'bg-emerald-600 text-white' : 'bg-neutral-300 dark:bg-neutral-700'
+          }`}
+          on:click={() => filter.set("all")}
         >
-          <!-- Date + Type -->
-          <div class="flex justify-between sm:w-60 shrink-0 text-xs sm:text-sm text-gray-500 dark:text-gray-400">
-            <span class="font-mono">{log.ts}</span>
-            <span
-              class={`font-semibold ${
-                log.type === 'error'
-                  ? 'text-red-500 dark:text-red-400'
-                  : log.type === 'update'
-                  ? 'text-amber-600 dark:text-amber-400'
-                  : 'text-emerald-600 dark:text-emerald-400'
-              }`}
-            >
-              [{log.type.toUpperCase()}]
-            </span>
-          </div>
-
-          <!-- Message -->
-          <div class="mt-1 sm:mt-0 text-sm text-neutral-800 dark:text-neutral-200 font-mono break-words leading-snug">
-            {log.msg}
-          </div>
-        </div>
-      {/each}
+          Tous
+        </button>
+        <button
+          class={`px-2 py-1 text-sm rounded ${
+            $filter === 'update' ? 'bg-emerald-600 text-white' : 'bg-neutral-300 dark:bg-neutral-700'
+          }`}
+          on:click={() => filter.set("update")}
+        >
+          Mises à jour
+        </button>
+        <button
+          class={`px-2 py-1 text-sm rounded ${
+            $filter === 'error' ? 'bg-emerald-600 text-white' : 'bg-neutral-300 dark:bg-neutral-700'
+          }`}
+          on:click={() => filter.set("error")}
+        >
+          Erreurs
+        </button>
+        <button
+          class="px-2 py-1 text-sm rounded bg-red-600 hover:bg-red-700 text-white"
+          on:click={clearLogs}
+        >
+          🧹 Effacer
+        </button>
+        <button
+          class="px-2 py-1 text-sm rounded bg-neutral-400 dark:bg-neutral-700 hover:bg-neutral-500"
+          on:click={() => journalOpen.update((v) => !v)}
+        >
+          {$journalOpen ? "🔽 Réduire" : "▶️ Ouvrir"}
+        </button>
+      </div>
     </div>
-  {/if}
-</div>
+
+    <!-- Contenu du journal -->
+    {#if $journalOpen}
+      <div
+        class="p-4 max-h-72 overflow-auto divide-y divide-neutral-300 dark:divide-neutral-700"
+      >
+        {#each $filteredLogs as log (log.ts)}
+          <div
+            class="py-2 sm:py-1 flex flex-col sm:flex-row sm:items-center sm:space-x-3 
+                   hover:bg-neutral-200/50 dark:hover:bg-neutral-700/30 rounded-lg px-2 transition"
+          >
+            <!-- Date + Type -->
+            <div
+              class="flex justify-between sm:w-60 shrink-0 text-xs sm:text-sm text-gray-500 dark:text-gray-400"
+            >
+              <span class="font-mono">{log.ts}</span>
+              <span
+                class={`font-semibold ${
+                  log.type === 'error'
+                    ? 'text-red-500 dark:text-red-400'
+                    : log.type === 'update'
+                    ? 'text-amber-600 dark:text-amber-400'
+                    : 'text-emerald-600 dark:text-emerald-400'
+                }`}
+              >
+                [{log.type.toUpperCase()}]
+              </span>
+            </div>
+
+            <!-- Message -->
+            <div
+              class="mt-1 sm:mt-0 text-sm text-neutral-800 dark:text-neutral-200 font-mono break-words leading-snug"
+            >
+              {log.msg}
+            </div>
+          </div>
+        {/each}
+      </div>
+    {/if}
+  </div>
 </div>
 
 <style>

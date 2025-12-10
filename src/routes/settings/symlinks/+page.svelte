@@ -1391,6 +1391,7 @@ async function deleteAllBrokenSymlinks() {
         {#each $symlinks as item}
             <SymlinkCard
                 {item}
+                showDate={$activeFilter === 'duplicates'}
                 onOpenPopup={openPopup}
                 onOpenArr={openArr}
                 onDelete={deleteSymlink}
