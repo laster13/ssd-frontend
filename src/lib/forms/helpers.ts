@@ -1,110 +1,119 @@
 import { z } from 'zod';
-import type { SuperValidated } from 'sveltekit-superforms';
+import type { SuperValidated, Infer } from 'sveltekit-superforms';
 
 // Application Settings Schema -----------------------------------------------------------------------------------
 
-// Liste des paramètres à récupérer depuis l'API
 export const applicationsSettingsToGet: string[] = [
-    'authentification',
-    'applications',
-    'dossiers'
+  'authentification',
+  'applications',
+  'dossiers'
 ];
 
-// Schéma de validation pour les paramètres d'application
 export const applicationsSettingsSchema = z.object({
-    id: z.union([z.number(), z.string()]).optional().default(0),
-    label: z.string().optional().default(''),
-    dossiers_on_item_type: z.array(z.object({
+  id: z.union([z.number(), z.string()]).optional().default(0),
+  label: z.string().optional().default(''),
+  dossiers_on_item_type: z
+    .array(
+      z.object({
         label: z.string()
-    })).optional().default([]),
+      })
+    )
+    .optional()
+    .default([]),
 
-    authentification: z
-        .record(z.string(), z.union([
-            z.literal("basique"),
-            z.literal("oauth"),
-            z.literal("authelia"),
-            z.literal("aucune")
-        ]))
-        .optional()
-        .default({ traefik: "basique" }), // Ajout de traefik avec valeur par défaut
+  authentification: z
+    .record(
+      z.string(),
+      z.union([
+        z.literal('basique'),
+        z.literal('oauth'),
+        z.literal('authelia'),
+        z.literal('aucune')
+      ])
+    )
+    .optional()
+    .default({}),
 
-    // Domaine est un dictionnaire avec des chaînes comme valeurs
-    domaine: z.record(z.string(), z.string().nullable()).optional().default({}),
+  domaine: z.record(z.string(), z.string().nullable()).optional().default({})
 });
 
+export type ApplicationsSettingsSchema = typeof applicationsSettingsSchema;
+
 export function applicationsSettingsToPass(data: any) {
-    console.log('Données d\'authentification avant traitement:', data?.data?.dossiers?.authentification);
+  console.log("Données d'authentification avant traitement:", data?.data?.dossiers?.authentification);
 
-    let applications = data?.data?.applications || [];
-    if (!Array.isArray(applications)) applications = applications ? [applications] : [];
+  let applications = data?.data?.applications || [];
+  if (!Array.isArray(applications)) applications = applications ? [applications] : [];
 
-    if (applications.length === 0) {
-        return {
-            id: 0,
-            label: '',
-            domaine: {},
-            dossiers_on_item_type: [],
-            authentification: { traefik: "basique" },
-        };
-    }
-
-    const selectedApplication = applications[0];
-    const dossiers_on_item_type = (data?.data?.dossiers?.on_item_type || []).map((item: string) => ({
-        label: item
-    }));
-
-    const authentification = dossiers_on_item_type.reduce((acc, item) => {
-        const authValue = data?.data?.dossiers?.authentification?.[item.label];
-        acc[item.label] = authValue !== undefined && authValue !== null ? authValue : 'basique';
-        return acc;
-    }, { traefik: 'basique' } as Record<string, string>);
-
-    const domaine = dossiers_on_item_type.reduce((acc, item) => {
-        acc[item.label] = data?.data?.dossiers?.domaine?.[item.label] || '';
-        return acc;
-    }, {} as Record<string, string>);
-
+  if (applications.length === 0) {
     return {
-        id: selectedApplication.id || 0,
-        label: selectedApplication.label || '',
-        domaine,
-        dossiers_on_item_type,
-        authentification
+      id: 0,
+      label: '',
+      domaine: {},
+      dossiers_on_item_type: [],
+      authentification: {}
     };
+  }
+
+  const selectedApplication = applications[0];
+
+  const dossiers_on_item_type = (data?.data?.dossiers?.on_item_type || []).map((item: string) => ({
+    label: item
+  }));
+
+  const authentification = dossiers_on_item_type.reduce((acc, item) => {
+    const authValue = data?.data?.dossiers?.authentification?.[item.label];
+    if (authValue !== undefined && authValue !== null && authValue !== '') {
+      acc[item.label] = authValue;
+    }
+    return acc;
+  }, {} as Record<string, string>);
+
+  const domaine = dossiers_on_item_type.reduce((acc, item) => {
+    acc[item.label] = data?.data?.dossiers?.domaine?.[item.label] || '';
+    return acc;
+  }, {} as Record<string, string>);
+
+  return {
+    id: selectedApplication.id || 0,
+    label: selectedApplication.label || '',
+    domaine,
+    dossiers_on_item_type,
+    authentification
+  };
 }
 
-// Fonction pour mettre à jour les paramètres
 export function applicationsSettingsToSet(
-    form: SuperValidated<ApplicationsSettingsSchema>, existingData = []
+  form: SuperValidated<Infer<ApplicationsSettingsSchema>>,
+  existingData = []
 ) {
-    console.log('Données du formulaire avant mise à jour:', form.data);
+  console.log('Données du formulaire avant mise à jour:', form.data);
 
-    const newApplication = {
-        id: form.data.id?.toString(),
-        label: form.data.label
-    };
+  const newApplication = {
+    id: form.data.id?.toString(),
+    label: form.data.label
+  };
 
-    const dossiers = {
-        on_item_type: form.data.dossiers_on_item_type.map((item) => item.label),
-        authentification: form.data.authentification,
-        domaine: form.data.domaine
-    };
+  const dossiers = {
+    on_item_type: form.data.dossiers_on_item_type.map((item) => item.label),
+    authentification: form.data.authentification ?? {},
+    domaine: form.data.domaine ?? {}
+  };
 
-    const result = [
-        {
-            key: 'applications',
-            value: [...existingData, newApplication]
-        },
-        {
-            key: 'dossiers',
-            value: dossiers
-        }
-    ];
+  const result = [
+    {
+      key: 'applications',
+      value: [...existingData, newApplication]
+    },
+    {
+      key: 'dossiers',
+      value: dossiers
+    }
+  ];
 
-    console.log('Données à retourner après mise à jour:', result);
-    return result;
+  console.log('Données à retourner après mise à jour:', result);
+  return result;
 }
-
 
 // seedbox Settings -----------------------------------------------------------------------------------
 // Les clés que nous allons récupérer depuis l'API

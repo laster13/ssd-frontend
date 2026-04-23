@@ -65,11 +65,9 @@ run_playbook() {
     local line="$1"
 
     if [[ -f "${SETTINGS_STORAGE}/vars/${line}.yml" ]]; then
-        ansible-playbook "${SETTINGS_SOURCE}/includes/dockerapps/generique.yml" --extra-vars "@${SETTINGS_STORAGE}/vars/${line}.yml" 2>/dev/null
-    elif [[ -f "${SETTINGS_SOURCE}/includes/dockerapps/${line}.yml" ]]; then
-        ansible-playbook "${SETTINGS_SOURCE}/includes/dockerapps/${line}.yml" 2>/dev/null
+        ansible-playbook "${SETTINGS_SOURCE}/includes/dockerapps/vars/generique.yml" --extra-vars "@${SETTINGS_STORAGE}/vars/${line}.yml" 2>/dev/null
     elif [[ -f "${SETTINGS_SOURCE}/includes/dockerapps/vars/${line}.yml" ]]; then
-        ansible-playbook "${SETTINGS_SOURCE}/includes/dockerapps/generique.yml" --extra-vars "@${SETTINGS_SOURCE}/includes/dockerapps/vars/${line}.yml" 2>/dev/null
+        ansible-playbook "${SETTINGS_SOURCE}/includes/dockerapps/vars/generique.yml" --extra-vars "@${SETTINGS_SOURCE}/includes/dockerapps/vars/${line}.yml" 2>/dev/null
     else
         log_write "Aucun fichier de configuration trouvé dans les sources, abandon"
         error=1

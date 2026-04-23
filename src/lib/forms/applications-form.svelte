@@ -19,21 +19,15 @@
   import { Input } from '$lib/components/ui/input';
   import { goto } from '$app/navigation';
   import { writable } from 'svelte/store';
-  import RunScript from '../../routes/run-script.svelte'; 
+  import RunScript from '../../routes/run-script.svelte';
   import { browser } from '$app/environment';
   import Portal from 'svelte-portal';
   import { computePosition, offset, flip, shift, autoUpdate } from '@floating-ui/dom';
 
-  // ---------------------------
-  // Props
-  // ---------------------------
   export let data: SuperValidated<Infer<ApplicationsSettingsSchema>>;
   export let actionUrl: string = '?/default';
   export let scriptName: string = 'appli';
 
-  // ---------------------------
-  // State variables
-  // ---------------------------
   let applications = [];
   let domaine = {};
   type Item = { id: number; label: string };
@@ -46,20 +40,13 @@
   let statusMessage = '';
   let showLogs = false;
 
-  // ---------------------------
-  // SSR / Client guards
-  // ---------------------------
   let isClient = false;
-  let screenWidth = 1024; // valeur par défaut safe pour SSR
+  let screenWidth = 1024;
 
   let triggerEl: HTMLElement;
   let listEl: HTMLElement;
   let cleanup: (() => void) | null = null;
 
-  // ---------------------------
-  // Authentification (segmented control)
-  // ---------------------------
-  // Options disponibles
   const options = [
     { value: "basique", label: "Basique" },
     { value: "oauth", label: "OAuth" },
@@ -67,7 +54,8 @@
     { value: "aucune", label: "Aucune" }
   ];
 
-  let activeIndex = 0;
+  // ✅ aucune auth active par défaut
+  let activeIndex = -1;
 
   function selectOption(opt, idx) {
     activeIndex = idx;
@@ -84,15 +72,7 @@
     const current = $formData.authentification?.[currentApp]?.toLowerCase?.();
 
     const idx = options.findIndex(o => o.value === current);
-    activeIndex = idx >= 0 ? idx : 0;
-
-    formData.update(data => {
-      if (!data.authentification) data.authentification = {};
-      if (!data.authentification[currentApp]) {
-        data.authentification[currentApp] = options[activeIndex].value;
-      }
-      return data;
-    });
+    activeIndex = idx >= 0 ? idx : -1;
 
     fetchServices();
     fetchApplications();
@@ -121,15 +101,12 @@
     initFloating();
   }
 
-  // ---------------------------
-  // Form
-  // ---------------------------
   const formDebug: boolean = getContext('formDebug');
 
   const form = superForm(data, {
     validators: zodClient(applicationsSettingsSchema),
     dataType: "json",
-    taintedMessage: false 
+    taintedMessage: false
   });
 
   const { form: formData, enhance, message, delayed } = form;
@@ -139,9 +116,6 @@
 
   formData.domaine = typeof formData.domaine === 'object' && !Array.isArray(formData.domaine) ? formData.domaine : {};
 
-  // ---------------------------
-  // Fetch & Combobox
-  // ---------------------------
   async function fetchServices() {
     try {
       const response = await fetch(`/settings/services.json?nocache=${Date.now()}`);
@@ -217,42 +191,42 @@
     selectedItem = null;
     selectedApplication = '';
     initializeCombobox();
+    activeIndex = -1;
   }
 
   function resetForm() {
     formData.update((data) => ({
       ...data,
       dossiers_on_item_type: [],
-      // 👉 on garde la valeur existante, pas de forçage en "basique"
-      authentification: { authappli: data.authentification?.authappli ?? "basique" },
+      authentification: {},
       domaine: {},
     }));
     resetCombobox();
   }
 
-
-  function handleSubmit(event: Event) {
-    event.preventDefault();
-
+  function handleSubmit() {
+    showSpinner = true;
+    isSubmitting = true;
     formData.update((data) => {
       if (typeof data.domaine === 'string') {
         try {
           data.domaine = JSON.parse(data.domaine);
         } catch {
           data.domaine = {};
-        }
+        } 
       }
-
-      handleFormSuccess();
 
       return {
         ...data,
         dossiers_on_item_type: [],
-        // 👉 on respecte la valeur choisie (aucune, basique, oauth, authelia)
-        authentification: { authappli: data.authentification?.authappli ?? "basique" },
-        domaine: {}
+        authentification: activeIndex >= 0
+          ? { authappli: options[activeIndex].value }
+          : {},
+        domaine: data.domaine ?? {}
       };
     });
+
+    handleFormSuccess();
   }
 
   function handleFormSuccess() {
@@ -262,7 +236,6 @@
       return;
     }
 
-    // ⏱ tempo seulement pour l’event script
     setTimeout(() => {
       if (browser) {
         const scriptEvent = new CustomEvent("startScript", {
@@ -270,7 +243,7 @@
         });
         window.dispatchEvent(scriptEvent);
       }
-    }, 1000); // ajuste entre 100–500ms pour test
+    }, 1000);
   }
 
   function updateButtonState(event: CustomEvent) {
@@ -288,9 +261,9 @@
   }
 </script>
 
-<!-- Formulaire pour la combobox -->
-<form method="POST" action={actionUrl} use:enhance class="my-8 flex flex-col gap-2" on:submit={handleSubmit}>
 
+<!-- Formulaire pour la combobox -->
+<form method="POST" action={actionUrl} use:enhance class="my-8 flex flex-col gap-2" on:submit={() => handleSubmit()}>
 <!-- Bloc Logs -->
 <div
   class="card stack cursor-pointer select-none
@@ -381,13 +354,16 @@
     <!-- Segmented control -->
     <div class="right flex-1 relative">
       <!-- ⚠️ Champ caché qui sera envoyé au serveur -->
-      <input type="hidden" name="authappli" value={options[activeIndex].value} />
+      <input type="hidden" name="authappli" value={activeIndex >= 0 ? options[activeIndex].value : ''} />
 
       <div class="relative flex flex-wrap sm:inline-flex bg-gray-100 dark:bg-gray-700 rounded-2xl p-1 w-full max-w-md gap-1 sm:gap-0">
         <!-- Slider animé -->
-        <span class="hidden sm:block absolute h-8 rounded-xl bg-amber-500 transition-all duration-300 ease-out"
-              style="width: calc(100% / {options.length}); transform: translateX({activeIndex * 100}%);"></span>
-
+        {#if activeIndex >= 0}
+          <span
+            class="hidden sm:block absolute h-8 rounded-xl bg-amber-500 transition-all duration-300 ease-out"
+            style="width: calc(100% / {options.length}); transform: translateX({activeIndex * 100}%);"
+          ></span>
+        {/if}
         {#each options as opt, idx}
           <button
             type="button"
@@ -712,7 +688,7 @@
 {/if}
 {/if}
 
-    <input type="hidden" name="domaine" value={JSON.stringify(formData.domaine)} />
+    <input type="hidden" name="domaine" value={$formData.domaine?.[selectedItem?.label] ?? ''} />
     <input type="hidden" name="selectedItemId" value={selectedItem?.id} />
     <input type="hidden" name="selectedItemLabel" value={selectedItem?.label} />
 
