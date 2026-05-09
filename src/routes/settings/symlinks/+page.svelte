@@ -27,7 +27,7 @@
 
   import {
     fetchSymlinks, fetchFolders, fetchShow, fetchLatestSymlinks,
-    triggerScanAPI, repairMissingSeasonsAPI, deleteBrokenAPI, deleteSymlinkAPI,
+    triggerScanAPI, triggerBrokenScanAPI, repairMissingSeasonsAPI, deleteBrokenAPI, deleteSymlinkAPI,
     fetchSonarrUrl, fetchRadarrUrl, exportSymlinksToFile, importSymlinksFromFile
   } from "$lib/api/symlinks";
 
@@ -50,6 +50,9 @@
   let filtersReady = false;
   let showRenamePopup = false;
 
+  let brokenScanning = false;
+  let brokenScanSuccess = false;
+
   let searchTerm = '';
   $: searchTerm = $search.trim();
 
@@ -71,15 +74,14 @@
     return count > 1 ? 's' : '';
   }
 
-// --- Renommage global ---
+  // --- Renommage global ---
   async function handleRename(type: string) {
-    // ⚡ Ici tu choisis quel endpoint taper selon le type
     if (type === "radarr") {
       console.log("🔥 Appel API Radarr rename");
     } else if (type === "sonarr") {
       console.log("🔥 Appel API Sonarr rename");
     } else {
-      await onRename(); // ton endpoint global déjà en place
+      console.log("🔥 Appel API rename global");
     }
   }
 
@@ -193,89 +195,103 @@
     }
   }
 
-// Détecter quels managers ont des symlinks cassés
-function detectManagersWithBroken(folder?: string) {
-  const list = get(symlinks);
+  // Détecter quels managers ont des symlinks cassés
+  async function detectManagersWithBroken(folder?: string) {
+    let list: any[] = [];
 
-  // Filtrage fiable sur la racine
-  const filtered = folder
-    ? list.filter(i => {
-        const path = i.symlink.replace(/\\/g, "/");
-        // Vérifie si le chemin commence par /Medias/<folder>
-        return path.includes(`/Medias/${folder}`);
-      })
-    : list;
+    // Si on est déjà sur la vue "orphans", on peut réutiliser la liste courante
+    if (get(activeFilter) === "orphans") {
+      list = get(symlinks);
+    } else {
+      const params = new URLSearchParams({
+        all: "true",
+        orphans: "true",
+      });
 
-  const hasRadarr = filtered.some(i => !i.target_exists && i.manager === "radarr");
-  const hasSonarr = filtered.some(i => !i.target_exists && i.manager === "sonarr");
+      if (folder) {
+        params.set("folder", folder);
+      }
 
-  return { hasRadarr, hasSonarr };
-}
+      const json = await fetchSymlinks(params);
+      list = json.data || [];
+    }
 
-function getRoutesForBroken(folder?: string): string[] {
-  const { hasRadarr, hasSonarr } = detectManagersWithBroken(folder);
+    const hasRadarr = list.some(i => !i.target_exists && i.manager === "radarr");
+    const hasSonarr = list.some(i => !i.target_exists && i.manager === "sonarr");
 
-  const routes: string[] = [];
-
-  if (hasRadarr) {
-    routes.push(
-      folder
-        ? `/api/v1/symlinks/delete_broken?folder=${encodeURIComponent(folder)}`
-        : `/api/v1/symlinks/delete_broken`
-    );
+    return { hasRadarr, hasSonarr };
   }
 
-  if (hasSonarr) {
-    routes.push(
-      folder
-        ? `/api/v1/symlinks/delete_broken_sonarr?folder=${encodeURIComponent(folder)}`
-        : `/api/v1/symlinks/delete_broken_sonarr`
-    );
+
+  async function getRoutesForBroken(folder?: string): Promise<string[]> {
+    const { hasRadarr, hasSonarr } = await detectManagersWithBroken(folder);
+
+    const routes: string[] = [];
+
+    if (hasRadarr) {
+      routes.push(
+        folder
+          ? `/api/v1/symlinks/delete_broken?folder=${encodeURIComponent(folder)}`
+          : `/api/v1/symlinks/delete_broken`
+      );
+    }
+
+    if (hasSonarr) {
+      routes.push(
+        folder
+          ? `/api/v1/symlinks/delete_broken_sonarr?folder=${encodeURIComponent(folder)}`
+          : `/api/v1/symlinks/delete_broken_sonarr`
+      );
+    }
+
+    return routes;
   }
 
-  return routes;
-}
+  // --- Supprimer tous les symlinks cassés ---
+  async function deleteAllBrokenSymlinks() {
+    if (!confirm("🗑️ Supprimer tous les symlinks cassés détectés ?")) return;
 
+    const folder = (get(selectedDir) ?? "").trim();
 
-// --- Supprimer tous les symlinks cassés ---
-async function deleteAllBrokenSymlinks() {
+    bulkDeleting.set(true);
+    bulkDeleteSuccess.set(false);
 
-  if (!confirm("🗑️ Supprimer tous les symlinks cassés détectés ?")) return;
-
-  const folder = (get(selectedDir) ?? "").trim();
-  const routes = getRoutesForBroken(folder);
-
-  if (routes.length === 0) {
-    logs.update(l => ["ℹ️ Aucun symlink cassé détecté.", ...l]);
-    return;
-  }
-
-  bulkDeleting.set(true);
-  bulkDeleteSuccess.set(false);
-
-  let totalDeleted = 0;
-
-  for (const route of routes) {
     try {
-      const result = await deleteBrokenAPI(route);
-      const deleted = Number(result.deleted) || 0;
-      totalDeleted += deleted;
+      const routes = await getRoutesForBroken(folder);
 
-      logs.update(l => [`🧹 ${route} → supprimé : ${deleted}`, ...l]);
+      if (routes.length === 0) {
+        logs.update(l => ["ℹ️ Aucun symlink cassé détecté.", ...l]);
+        return;
+      }
+
+      let totalDeleted = 0;
+
+      for (const route of routes) {
+        try {
+          const result = await deleteBrokenAPI(route);
+          const deleted = Number(result.deleted) || 0;
+          totalDeleted += deleted;
+
+          logs.update(l => [`🧹 ${route} → supprimé : ${deleted}`, ...l]);
+        } catch (e: any) {
+          logs.update(l => [`❌ ${route} — ${e.message}`, ...l]);
+        }
+      }
+
+      logs.update(l => [`🧹 Total supprimé : ${totalDeleted}`, ...l]);
+
+      await refreshList();
+
+      bulkDeleteSuccess.set(true);
+      setTimeout(() => bulkDeleteSuccess.set(false), 3000);
 
     } catch (e: any) {
-      logs.update(l => [`❌ ${route} — ${e.message}`, ...l]);
+      logs.update(l => [`❌ Erreur suppression globale des symlinks cassés : ${e?.message || e}`, ...l]);
+      alert(`❌ Échec suppression globale : ${e?.message || e}`);
+    } finally {
+      bulkDeleting.set(false);
     }
   }
-
-  logs.update(l => [`🧹 Total supprimé : ${totalDeleted}`, ...l]);
-
-  await refreshList();
-
-  bulkDeleteSuccess.set(true);
-  setTimeout(() => bulkDeleteSuccess.set(false), 3000);
-  bulkDeleting.set(false);
-}
 
   // --- Supprimer un symlink ---
   async function deleteSymlink(item: any) {
@@ -362,7 +378,56 @@ async function deleteAllBrokenSymlinks() {
     }
   }
 
-// --- Refresh ---
+  async function triggerBrokenScan() {
+    if (brokenScanning) return;
+
+    brokenScanning = true;
+    brokenScanSuccess = false;
+
+    try {
+      const json = await triggerBrokenScanAPI();
+
+      logs.update(l => [
+        `🚀 ${json.message || "Détection des liens brisés lancée"}`,
+        ...l
+      ]);
+
+      // On ne fait plus refreshList() ici :
+      // la fin du job arrivera par SSE
+    } catch (e: any) {
+      brokenScanning = false;
+      logs.update(l => [
+        `❌ Erreur détection brisés : ${e?.message || e}`,
+        ...l
+      ]);
+      alert(`❌ Échec détection brisés : ${e?.message || e}`);
+    }
+  }
+
+  async function refreshDuplicatesCount() {
+    try {
+      const dupParams = new URLSearchParams();
+      if (get(selectedDir)) {
+        dupParams.append("folder", get(selectedDir));
+      }
+
+      const dupRes = await fetch(`${baseURL}/api/v1/symlinks/duplicates?${dupParams}`);
+      if (dupRes.ok) {
+        const dupJson = await dupRes.json();
+        duplicates.set(dupJson.data || []);
+        duplicatesCount.set(dupJson.total || (dupJson.data?.length || 0));
+      } else {
+        duplicates.set([]);
+        duplicatesCount.set(0);
+      }
+    } catch (err) {
+      console.error("❌ Erreur récupération doublons :", err);
+      duplicates.set([]);
+      duplicatesCount.set(0);
+    }
+  }
+
+  // --- Refresh ---
   async function refreshList() {
     refreshing.set(true);
     refreshSuccess.set(false);
@@ -390,7 +455,6 @@ async function deleteAllBrokenSymlinks() {
 
       let json: any;
 
-      // ✅ Gestion des filtres côté backend
       switch (get(activeFilter)) {
         case "orphans":
           params.append("orphans", "true");
@@ -425,44 +489,27 @@ async function deleteAllBrokenSymlinks() {
           symlinks.set(json.data || []);
           break;
 
-        default: // 'none'
+        default:
           json = await fetchSymlinks(params);
           symlinks.set(json.data || []);
           break;
       }
 
-      // ✅ Mise à jour des compteurs globaux
       totalItems.set(json.total || 0);
       orphaned.set(json.orphaned || 0);
       allBrokenCount.set(json.all_broken || 0);
       uniqueTargets.set(json.unique_targets || 0);
-      imdbMissing.set(json.imdb_missing || 0); // 👈 compteur à renommer
-
-      // ✅ Appel séparé pour doublons (compteur bouton)
-      try {
-        const dupParams = new URLSearchParams();
-        if (get(selectedDir)) {
-          dupParams.append("folder", get(selectedDir));
-        }
-
-        const dupRes = await fetch(`${baseURL}/api/v1/symlinks/duplicates?${dupParams}`);
-        if (dupRes.ok) {
-          const dupJson = await dupRes.json();
-          duplicates.set(dupJson.data || []);
-          duplicatesCount.set(dupJson.total || (dupJson.data?.length || 0));
-        } else {
-          duplicates.set([]);
-          duplicatesCount.set(0);
-        }
-      } catch (err) {
-        console.error("❌ Erreur récupération doublons :", err);
-        duplicates.set([]);
-        duplicatesCount.set(0);
-      }
+      imdbMissing.set(json.imdb_missing || 0);
 
       logs.update((l) => [`Liste rafraîchie (page ${page})`, ...l]);
       refreshSuccess.set(true);
       setTimeout(() => refreshSuccess.set(false), 2000);
+
+      // ✅ on recharge le compteur doublons en arrière-plan, sans bloquer l’affichage principal
+      if (get(activeFilter) !== "duplicates") {
+         refreshDuplicatesCount();
+      }
+
     } finally {
       refreshing.set(false);
     }
@@ -530,7 +577,11 @@ async function deleteAllBrokenSymlinks() {
     await loadAvailableDirs();
     await refreshList();
     filtersReady = true;
-    connectSSE();
+
+    // connecter SSE seulement après le premier rendu utile
+    setTimeout(() => {
+      connectSSE();
+    }, 300);
   });
 
   // --- SSE ---
@@ -573,6 +624,41 @@ async function deleteAllBrokenSymlinks() {
             refreshNeeded = true;
             break;
 
+          case "broken_scan_started":
+            brokenScanning = true;
+            brokenScanSuccess = false;
+            logs.update(l => [
+              `🚀 ${payload.message || "Détection des liens brisés démarrée"}`,
+              ...l
+            ]);
+            break;
+
+          case "broken_scan_progress":
+            brokenScanning = true;
+            break;
+
+          case "broken_scan_completed":
+            brokenScanning = false;
+            brokenScanSuccess = true;
+            logs.update(l => [
+              `✅ ${payload.message || `Détection terminée — ${payload.broken_count || 0} brisé(s)`}`,
+              ...l
+            ]);
+            refreshNeeded = true;
+            setTimeout(() => {
+              brokenScanSuccess = false;
+            }, 2500);
+            break;
+
+          case "broken_scan_failed":
+            brokenScanning = false;
+            brokenScanSuccess = false;
+            logs.update(l => [
+              `❌ ${payload.message || "Détection des liens brisés échouée"}`,
+              ...l
+            ]);
+            break;
+
           // --- ⚠️ Symlinks brisés (monitor léger, live, périodique, etc.) ---
           case "broken_symlinks_light":
           case "symlink_broken_live":
@@ -581,9 +667,14 @@ async function deleteAllBrokenSymlinks() {
             console.warn(`⚠️ ${payload.count || 0} symlink(s) brisé(s) détecté(s) (${evt})`);
 
             // ✅ Récupération de la bonne liste de symlinks brisés
-            const brokenList =
-              Array.isArray(payload) ? payload :
-              Array.isArray(payload.data) ? payload.data : [];
+            const brokenList = Array.isArray(payload.broken_symlinks)
+              ? payload.broken_symlinks.map((symlinkPath: string) => ({
+                  symlink: symlinkPath,
+                  target_exists: false,
+                  ref_count: 0,
+                  broken: true
+                }))
+              : [];
 
             if (brokenList.length > 0) {
               symlinks.update(list => {
@@ -614,7 +705,8 @@ async function deleteAllBrokenSymlinks() {
             }
 
             allBrokenCount.set(payload.count || brokenList.length || 0);
-            refreshNeeded = true;
+            orphaned.set(payload.count || brokenList.length || 0);
+            refreshNeeded = false;
             logs.update(l => [
               `⚠️ ${brokenList.length || payload.count || 0} symlink(s) brisé(s) détecté(s) (${evt})`,
               ...l
@@ -654,8 +746,10 @@ async function deleteAllBrokenSymlinks() {
 
         // --- Synchronisation globale ---
         if (refreshNeeded) {
-          await refreshList();      // ⚙️ recharge symlinks + compteurs
-          await loadLatestSymlinks();
+          await refreshList();
+          if (get(activeFilter) === "latest") {
+            await loadLatestSymlinks();
+          }
         }
 
       } catch (err) {
@@ -925,7 +1019,33 @@ async function deleteAllBrokenSymlinks() {
                        bg-gradient-to-r from-red-600 to-rose-600 
                        dark:from-red-400 dark:to-rose-400
                        bg-clip-text text-transparent">
-            Scan
+            Scan rapide
+          </span>
+        </button>
+
+        <!-- ✅ Détection liens brisés -->
+        <button
+          type="button"
+          class="w-full inline-flex items-center gap-3 px-4 py-2 rounded-lg border
+                 border-orange-200 dark:border-orange-700 
+                 bg-orange-50 dark:bg-orange-900/40 shadow-sm
+                 hover:shadow-md transition-all duration-300
+                 cursor-pointer disabled:opacity-50"
+          on:click={triggerBrokenScan}
+          disabled={brokenScanning}
+        >
+          {#if brokenScanning}
+            <Loader2 class="w-5 h-5 animate-spin text-orange-600 dark:text-orange-300" />
+          {:else if brokenScanSuccess}
+            <CheckCircle2 class="w-5 h-5 text-green-600 dark:text-green-400" />
+          {:else}
+            <Lightbulb class="w-5 h-5 text-orange-600 dark:text-orange-300" />
+          {/if}
+          <span class="text-sm font-medium tracking-wide 
+                       bg-gradient-to-r from-orange-600 to-amber-600 
+                       dark:from-orange-400 dark:to-amber-400
+                       bg-clip-text text-transparent">
+            Détecter brisés
           </span>
         </button>
 
@@ -1204,7 +1324,34 @@ async function deleteAllBrokenSymlinks() {
                        bg-gradient-to-r from-red-600 to-rose-600 
                        dark:from-red-400 dark:to-rose-400
                        bg-clip-text text-transparent">
-            Scan
+            Scan rapide
+          </span>
+        </button>
+
+        <!-- ✅ Bouton Détecter brisés -->
+        <button
+          type="button"
+          class="inline-flex items-center gap-3 px-4 py-2 rounded-lg border
+                 border-orange-200 dark:border-orange-700 
+                 bg-orange-50 dark:bg-orange-900/40 shadow-sm
+                 hover:shadow-md transition-all duration-300
+                 cursor-pointer disabled:opacity-50"
+          on:click={triggerBrokenScan}
+          disabled={brokenScanning}
+        >
+          {#if brokenScanning}
+            <Loader2 class="w-5 h-5 animate-spin text-orange-600 dark:text-orange-300" />
+          {:else if brokenScanSuccess}
+            <CheckCircle2 class="w-5 h-5 text-green-600 dark:text-green-400" />
+          {:else}
+            <Lightbulb class="w-5 h-5 text-orange-600 dark:text-orange-300" />
+          {/if}
+
+          <span class="text-sm font-medium tracking-wide 
+                       bg-gradient-to-r from-orange-600 to-amber-600 
+                       dark:from-orange-400 dark:to-amber-400
+                       bg-clip-text text-transparent">
+            Détecter brisés
           </span>
         </button>
 
@@ -1238,6 +1385,12 @@ async function deleteAllBrokenSymlinks() {
   {#if $scanStatus}
     <div class="p-4 bg-yellow-100 dark:bg-yellow-900 text-yellow-800 dark:text-yellow-300 rounded shadow flex items-center gap-2">
       <Info class="w-4 h-4" /> Scan in progress...
+    </div>
+  {/if}
+
+  {#if brokenScanning}
+    <div class="p-4 bg-orange-100 dark:bg-orange-900 text-orange-800 dark:text-orange-300 rounded shadow flex items-center gap-2">
+      <Lightbulb class="w-4 h-4" /> Détection des liens brisés en cours...
     </div>
   {/if}
 

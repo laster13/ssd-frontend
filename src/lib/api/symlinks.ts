@@ -64,6 +64,14 @@ export async function triggerScanAPI() {
   return handleResponse(res);
 }
 
+export async function triggerBrokenScanAPI() {
+  const res = await fetch(`${baseURL}/api/v1/symlinks/scan-broken`, {
+    method: "POST",
+    credentials: "include",
+  });
+  return handleResponse(res);
+}
+
 export async function repairMissingSeasonsAPI(folder?: string) {
   const url =
     `${baseURL}/api/v1/symlinks/repair-missing-seasons` +
