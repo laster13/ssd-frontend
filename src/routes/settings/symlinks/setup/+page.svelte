@@ -14,6 +14,7 @@
   const tmdbApiKey = writable('');
   const discordWebhook = writable('');
   const alldebridInstances = writable([]);
+  const autoRepairBrokenSymlinks = writable(false);
 
   const saving = writable(false);
   const toast = writable(null);
@@ -96,6 +97,7 @@
       sonarrApiKey.set(data.sonarr_api_key || '');
       tmdbApiKey.set(data.tmdb_api_key || '');
       discordWebhook.set(data.discord_webhook_url || '');
+      autoRepairBrokenSymlinks.set(data.auto_repair_broken_symlinks ?? false);
       alldebridInstances.set(
         (data.alldebrid_instances || []).map(instance => ({
           name: instance.name || '',
@@ -135,6 +137,7 @@
         sonarr_api_key: $sonarrApiKey,
         tmdb_api_key: $tmdbApiKey,
         discord_webhook_url: $discordWebhook,
+        auto_repair_broken_symlinks: $autoRepairBrokenSymlinks,
         alldebrid_instances: cleanedInstances
       };
 
@@ -326,6 +329,26 @@
           class="flex-1 input"
         />
       </div>
+    </fieldset>
+
+    <fieldset class="space-y-4">
+      <legend class="legend-azure text-lg font-semibold">🛠️ Réparation automatique</legend>
+
+      <div class="flex items-center gap-3 bg-white/70 dark:bg-gray-800/60 backdrop-blur-lg p-4 rounded-xl shadow border border-gray-200 dark:border-gray-700">
+        <input
+          id="autoRepairBrokenSymlinks"
+          type="checkbox"
+          bind:checked={$autoRepairBrokenSymlinks}
+          class="w-4 h-4"
+        />
+        <label for="autoRepairBrokenSymlinks" class="text-sm text-gray-700 dark:text-gray-300">
+          Réparer automatiquement les symlinks brisés
+        </label>
+      </div>
+
+      <p class="text-sm text-gray-500 dark:text-gray-400">
+        Si activé, le backend supprime automatiquement les symlinks cassés et relance Radarr / Sonarr.
+      </p>
     </fieldset>
 
     <fieldset class="space-y-4">
