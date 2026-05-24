@@ -1,4 +1,5 @@
 // src/lib/api/symlinks.ts
+
 const baseURL = import.meta.env.DEV
   ? import.meta.env.VITE_BACKEND_URL_HTTP
   : import.meta.env.VITE_BACKEND_URL_HTTPS;
@@ -9,6 +10,7 @@ async function handleResponse(res: Response) {
     const text = await res.text().catch(() => "");
     throw new Error(text || `HTTP ${res.status}`);
   }
+
   return res.json().catch(() => ({}));
 }
 
@@ -17,6 +19,7 @@ export async function fetchSymlinks(params: URLSearchParams) {
   const res = await fetch(`${baseURL}/api/v1/symlinks?${params.toString()}`, {
     credentials: "include",
   });
+
   return handleResponse(res);
 }
 
@@ -24,25 +27,33 @@ export async function fetchFolders() {
   const res = await fetch(`${baseURL}/api/v1/symlinks/folders`, {
     credentials: "include",
   });
+
   return handleResponse(res);
 }
 
 export async function fetchShow(showId: string, instanceId: number | null) {
   const res = await fetch(
     `/api/v1/shows/${showId}?instance_id=${instanceId}`,
-    { credentials: "include" }
+    {
+      credentials: "include",
+    }
   );
+
   return handleResponse(res);
 }
 
 export async function fetchLatestSymlinks(params: URLSearchParams) {
-  params.set("sort", "created_at");
-  params.set("order", "desc");
-  if (!params.has("limit")) params.set("limit", "100");
+  if (!params.has("limit")) {
+    params.set("limit", "100");
+  }
 
-  const res = await fetch(`${baseURL}/api/v1/symlinks?${params.toString()}`, {
-    credentials: "include",
-  });
+  const res = await fetch(
+    `${baseURL}/api/v1/symlinks/latest-added?${params.toString()}`,
+    {
+      credentials: "include",
+    }
+  );
+
   return handleResponse(res);
 }
 
@@ -51,7 +62,10 @@ export async function fetchDuplicates(params?: URLSearchParams) {
     ? `${baseURL}/api/v1/symlinks/duplicates?${params.toString()}`
     : `${baseURL}/api/v1/symlinks/duplicates`;
 
-  const res = await fetch(url, { credentials: "include" });
+  const res = await fetch(url, {
+    credentials: "include",
+  });
+
   return handleResponse(res);
 }
 
@@ -61,14 +75,7 @@ export async function triggerScanAPI() {
     method: "POST",
     credentials: "include",
   });
-  return handleResponse(res);
-}
 
-export async function triggerBrokenScanAPI() {
-  const res = await fetch(`${baseURL}/api/v1/symlinks/scan-broken`, {
-    method: "POST",
-    credentials: "include",
-  });
   return handleResponse(res);
 }
 
@@ -76,10 +83,12 @@ export async function repairMissingSeasonsAPI(folder?: string) {
   const url =
     `${baseURL}/api/v1/symlinks/repair-missing-seasons` +
     (folder ? `?folder=${encodeURIComponent(folder)}` : "");
+
   const res = await fetch(url, {
     method: "POST",
     credentials: "include",
   });
+
   return handleResponse(res);
 }
 
@@ -88,6 +97,7 @@ export async function deleteBrokenAPI(route: string) {
     method: "POST",
     credentials: "include",
   });
+
   return handleResponse(res);
 }
 
@@ -97,6 +107,7 @@ export async function deleteSymlinkAPI(route: string) {
     method: "DELETE",
     credentials: "include",
   });
+
   return handleResponse(res);
 }
 
@@ -104,16 +115,22 @@ export async function deleteSymlinkAPI(route: string) {
 export async function fetchSonarrUrl(relative: string) {
   const res = await fetch(
     `${baseURL}/api/v1/symlinks/get-sonarr-url/${encodeURIComponent(relative)}`,
-    { credentials: "include" }
+    {
+      credentials: "include",
+    }
   );
+
   return handleResponse(res);
 }
 
 export async function fetchRadarrUrl(relativeDir: string) {
   const res = await fetch(
     `${baseURL}/api/v1/symlinks/get-radarr-url/${encodeURIComponent(relativeDir)}`,
-    { credentials: "include" }
+    {
+      credentials: "include",
+    }
   );
+
   return handleResponse(res);
 }
 
@@ -122,17 +139,21 @@ export function exportSymlinksToFile(data: any[]) {
   const blob = new Blob([JSON.stringify(data, null, 2)], {
     type: "application/json",
   });
+
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
+
   a.href = url;
   a.download = "symlinks_backup.json";
   a.click();
+
   URL.revokeObjectURL(url);
 }
 
 export function importSymlinksFromFile(file: File): Promise<any[]> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
+
     reader.onload = () => {
       try {
         const imported = JSON.parse(String(reader.result));
@@ -141,6 +162,7 @@ export function importSymlinksFromFile(file: File): Promise<any[]> {
         reject(new Error("Invalid JSON"));
       }
     };
+
     reader.onerror = () => reject(reader.error);
     reader.readAsText(file);
   });
@@ -155,6 +177,7 @@ export async function scanMoviesAPI(dryRun: boolean = true) {
       credentials: "include",
     }
   );
+
   return handleResponse(res);
 }
 
@@ -166,6 +189,7 @@ export async function scanSeriesAPI(dryRun: boolean = true) {
       credentials: "include",
     }
   );
+
   return handleResponse(res);
 }
 
@@ -173,5 +197,6 @@ export async function scanLibrariesAPI() {
   const res = await fetch(`${baseURL}/api/v1/symlinks/libraries`, {
     credentials: "include",
   });
+
   return handleResponse(res);
 }

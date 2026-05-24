@@ -10,7 +10,7 @@
 
   import {
     FolderSearch, ChevronDown, Search, Sparkles, FolderOpen, Trash,
-    RefreshCw, Info, Scan, Filter, Lightbulb, Trash2, Loader2, Edit3, CheckCircle2, Tv
+    RefreshCw, Info, Scan, Filter, Trash2, Loader2, Edit3, CheckCircle2, Tv
   } from "lucide-svelte";
 
 
@@ -27,7 +27,7 @@
 
   import {
     fetchSymlinks, fetchFolders, fetchShow, fetchLatestSymlinks,
-    triggerScanAPI, triggerBrokenScanAPI, repairMissingSeasonsAPI, deleteBrokenAPI, deleteSymlinkAPI,
+    triggerScanAPI, repairMissingSeasonsAPI, deleteBrokenAPI, deleteSymlinkAPI,
     fetchSonarrUrl, fetchRadarrUrl, exportSymlinksToFile, importSymlinksFromFile
   } from "$lib/api/symlinks";
 
@@ -49,9 +49,6 @@
   let mounted = false;
   let filtersReady = false;
   let showRenamePopup = false;
-
-  let brokenScanning = false;
-  let brokenScanSuccess = false;
 
   let searchTerm = '';
   $: searchTerm = $search.trim();
@@ -378,32 +375,6 @@
     }
   }
 
-  async function triggerBrokenScan() {
-    if (brokenScanning) return;
-
-    brokenScanning = true;
-    brokenScanSuccess = false;
-
-    try {
-      const json = await triggerBrokenScanAPI();
-
-      logs.update(l => [
-        `🚀 ${json.message || "Détection des liens brisés lancée"}`,
-        ...l
-      ]);
-
-      // On ne fait plus refreshList() ici :
-      // la fin du job arrivera par SSE
-    } catch (e: any) {
-      brokenScanning = false;
-      logs.update(l => [
-        `❌ Erreur détection brisés : ${e?.message || e}`,
-        ...l
-      ]);
-      alert(`❌ Échec détection brisés : ${e?.message || e}`);
-    }
-  }
-
   async function refreshDuplicatesCount() {
     try {
       const dupParams = new URLSearchParams();
@@ -622,41 +593,6 @@
           // --- Scan terminé ---
           case "scan_completed":
             refreshNeeded = true;
-            break;
-
-          case "broken_scan_started":
-            brokenScanning = true;
-            brokenScanSuccess = false;
-            logs.update(l => [
-              `🚀 ${payload.message || "Détection des liens brisés démarrée"}`,
-              ...l
-            ]);
-            break;
-
-          case "broken_scan_progress":
-            brokenScanning = true;
-            break;
-
-          case "broken_scan_completed":
-            brokenScanning = false;
-            brokenScanSuccess = true;
-            logs.update(l => [
-              `✅ ${payload.message || `Détection terminée — ${payload.broken_count || 0} brisé(s)`}`,
-              ...l
-            ]);
-            refreshNeeded = true;
-            setTimeout(() => {
-              brokenScanSuccess = false;
-            }, 2500);
-            break;
-
-          case "broken_scan_failed":
-            brokenScanning = false;
-            brokenScanSuccess = false;
-            logs.update(l => [
-              `❌ ${payload.message || "Détection des liens brisés échouée"}`,
-              ...l
-            ]);
             break;
 
           // --- ⚠️ Symlinks brisés (monitor léger, live, périodique, etc.) ---
@@ -1019,33 +955,7 @@
                        bg-gradient-to-r from-red-600 to-rose-600 
                        dark:from-red-400 dark:to-rose-400
                        bg-clip-text text-transparent">
-            Scan rapide
-          </span>
-        </button>
-
-        <!-- ✅ Détection liens brisés -->
-        <button
-          type="button"
-          class="w-full inline-flex items-center gap-3 px-4 py-2 rounded-lg border
-                 border-orange-200 dark:border-orange-700 
-                 bg-orange-50 dark:bg-orange-900/40 shadow-sm
-                 hover:shadow-md transition-all duration-300
-                 cursor-pointer disabled:opacity-50"
-          on:click={triggerBrokenScan}
-          disabled={brokenScanning}
-        >
-          {#if brokenScanning}
-            <Loader2 class="w-5 h-5 animate-spin text-orange-600 dark:text-orange-300" />
-          {:else if brokenScanSuccess}
-            <CheckCircle2 class="w-5 h-5 text-green-600 dark:text-green-400" />
-          {:else}
-            <Lightbulb class="w-5 h-5 text-orange-600 dark:text-orange-300" />
-          {/if}
-          <span class="text-sm font-medium tracking-wide 
-                       bg-gradient-to-r from-orange-600 to-amber-600 
-                       dark:from-orange-400 dark:to-amber-400
-                       bg-clip-text text-transparent">
-            Détecter brisés
+            Scan
           </span>
         </button>
 
@@ -1324,34 +1234,7 @@
                        bg-gradient-to-r from-red-600 to-rose-600 
                        dark:from-red-400 dark:to-rose-400
                        bg-clip-text text-transparent">
-            Scan rapide
-          </span>
-        </button>
-
-        <!-- ✅ Bouton Détecter brisés -->
-        <button
-          type="button"
-          class="inline-flex items-center gap-3 px-4 py-2 rounded-lg border
-                 border-orange-200 dark:border-orange-700 
-                 bg-orange-50 dark:bg-orange-900/40 shadow-sm
-                 hover:shadow-md transition-all duration-300
-                 cursor-pointer disabled:opacity-50"
-          on:click={triggerBrokenScan}
-          disabled={brokenScanning}
-        >
-          {#if brokenScanning}
-            <Loader2 class="w-5 h-5 animate-spin text-orange-600 dark:text-orange-300" />
-          {:else if brokenScanSuccess}
-            <CheckCircle2 class="w-5 h-5 text-green-600 dark:text-green-400" />
-          {:else}
-            <Lightbulb class="w-5 h-5 text-orange-600 dark:text-orange-300" />
-          {/if}
-
-          <span class="text-sm font-medium tracking-wide 
-                       bg-gradient-to-r from-orange-600 to-amber-600 
-                       dark:from-orange-400 dark:to-amber-400
-                       bg-clip-text text-transparent">
-            Détecter brisés
+            Scan
           </span>
         </button>
 
@@ -1385,12 +1268,6 @@
   {#if $scanStatus}
     <div class="p-4 bg-yellow-100 dark:bg-yellow-900 text-yellow-800 dark:text-yellow-300 rounded shadow flex items-center gap-2">
       <Info class="w-4 h-4" /> Scan in progress...
-    </div>
-  {/if}
-
-  {#if brokenScanning}
-    <div class="p-4 bg-orange-100 dark:bg-orange-900 text-orange-800 dark:text-orange-300 rounded shadow flex items-center gap-2">
-      <Lightbulb class="w-4 h-4" /> Détection des liens brisés en cours...
     </div>
   {/if}
 
@@ -1544,7 +1421,7 @@
         {#each $symlinks as item}
             <SymlinkCard
                 {item}
-                showDate={$activeFilter === 'duplicates'}
+                showDate={$activeFilter === 'latest' || $activeFilter === 'duplicates'}
                 onOpenPopup={openPopup}
                 onOpenArr={openArr}
                 onDelete={deleteSymlink}
