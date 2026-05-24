@@ -36,11 +36,19 @@
 
   // === STORES ===
   const linksDirs = writable<LinkDir[]>([]);
+  const mountDirs = writable<string[]>([]);
+
   const radarrApiKey = writable('');
   const sonarrApiKey = writable('');
   const tmdbApiKey = writable('');
   const discordWebhook = writable('');
   const alldebridInstances = writable<AllDebridInstance[]>([]);
+
+  // === Options automatiques ===
+  const autoRepairBrokenSymlinks = writable(false);
+  const disableSeasonPackCheck = writable(false);
+  const skipEpisodeDeletion = writable(false);
+
   const saving = writable(false);
   const toast = writable<ToastState>(null);
 
@@ -118,10 +126,17 @@
       const data = await res.json();
 
       linksDirs.set(data.links_dirs || []);
+      mountDirs.set(data.mount_dirs || []);
+
       radarrApiKey.set(data.radarr_api_key || '');
       sonarrApiKey.set(data.sonarr_api_key || '');
       tmdbApiKey.set(data.tmdb_api_key || '');
       discordWebhook.set(data.discord_webhook_url || '');
+
+      autoRepairBrokenSymlinks.set(data.auto_repair_broken_symlinks ?? false);
+      disableSeasonPackCheck.set(data.disable_season_pack_check ?? false);
+      skipEpisodeDeletion.set(data.skip_episode_deletion ?? false);
+
       alldebridInstances.set(
         (data.alldebrid_instances || []).map((instance: Partial<AllDebridInstance>) => ({
           name: instance.name || '',
@@ -157,10 +172,19 @@
       const updatedConfig = {
         ...currentData,
         links_dirs: $linksDirs,
+        mount_dirs: $mountDirs
+          .filter((path) => path && path.trim() !== '')
+          .map((path) => path.trim()),
+
         radarr_api_key: $radarrApiKey,
         sonarr_api_key: $sonarrApiKey,
         tmdb_api_key: $tmdbApiKey,
         discord_webhook_url: $discordWebhook,
+
+        auto_repair_broken_symlinks: $autoRepairBrokenSymlinks,
+        disable_season_pack_check: $disableSeasonPackCheck,
+        skip_episode_deletion: $skipEpisodeDeletion,
+
         alldebrid_instances: cleanedInstances
       };
 
@@ -186,6 +210,15 @@
   // === LIENS SYMLINKS ===
   function removeLinksDir(index: number) {
     linksDirs.update((dirs) => dirs.filter((_, i) => i !== index));
+  }
+
+  // === DOSSIERS MOUNT / WEBDAV ===
+  function addMountDir() {
+    mountDirs.update((dirs) => [...dirs, '']);
+  }
+
+  function removeMountDir(index: number) {
+    mountDirs.update((dirs) => dirs.filter((_, i) => i !== index));
   }
 
   // === INSTANCES ALLDEBRID ===
@@ -236,7 +269,7 @@
       Étape 3/4 : Configuration générale
     </h1>
     <p class="text-base md:text-lg text-gray-600 dark:text-gray-400">
-      Dossiers, API Keys, Discord et instances AllDebrid.
+      Dossiers, mount WebDAV, API Keys, Discord, options automatiques et instances AllDebrid.
     </p>
   </div>
 
@@ -289,6 +322,44 @@
 
         <button type="button" on:click={() => openExplorer(null)} class="btn-outline">
           <FolderPlus class="w-4 h-4" /> Ajouter un dossier
+        </button>
+      </fieldset>
+
+      <fieldset class="space-y-4">
+        <legend class="legend-azure text-lg font-semibold">📦 Dossiers mount / WebDAV</legend>
+
+        <p class="text-sm text-gray-500 dark:text-gray-400">
+          Ces chemins correspondent aux dossiers réellement montés, par exemple
+          <code>/mnt/alldebrid/__all__</code>. Le backend les utilise comme racines de
+          référence pour résoudre les cibles des symlinks.
+        </p>
+
+        <div class="space-y-3">
+          {#each $mountDirs as mountDir, index (index)}
+            <div
+              class="flex flex-col md:flex-row gap-3 bg-white/70 dark:bg-gray-800/60 backdrop-blur-lg p-4 rounded-xl shadow border border-gray-200 dark:border-gray-700"
+            >
+              <input
+                type="text"
+                bind:value={$mountDirs[index]}
+                placeholder="/mnt/alldebrid/__all__"
+                class="flex-1 input font-medium"
+              />
+
+              <button
+                type="button"
+                on:click={() => removeMountDir(index)}
+                class="text-red-500 hover:text-red-600 hover:scale-110 transition"
+                aria-label="Supprimer ce dossier mount"
+              >
+                <Trash2 class="w-5 h-5" />
+              </button>
+            </div>
+          {/each}
+        </div>
+
+        <button type="button" on:click={addMountDir} class="btn-outline">
+          <FolderPlus class="w-4 h-4" /> Ajouter un dossier mount
         </button>
       </fieldset>
 
@@ -349,6 +420,95 @@
             placeholder="https://discord.com/api/webhooks/xxxxx/xxxxx"
             class="flex-1 input"
           />
+        </div>
+      </fieldset>
+
+      <fieldset class="space-y-5">
+        <legend class="legend-azure text-lg font-semibold">🛠️ Options automatiques</legend>
+
+        <div class="grid gap-5">
+          <div class="option-card">
+            <div class="flex items-start justify-between gap-5">
+              <div class="space-y-2">
+                <label
+                  for="autoRepairBrokenSymlinks"
+                  class="block text-base font-semibold text-gray-800 dark:text-gray-100"
+                >
+                  Réparer automatiquement les symlinks brisés
+                </label>
+
+                <p class="text-sm leading-relaxed text-gray-500 dark:text-gray-400">
+                  Si cette option est activée, le backend détecte les symlinks cassés,
+                  les supprime automatiquement, puis relance Radarr ou Sonarr afin de
+                  régénérer des liens propres.
+                </p>
+              </div>
+
+              <label class="switch" aria-label="Réparer automatiquement les symlinks brisés">
+                <input
+                  id="autoRepairBrokenSymlinks"
+                  type="checkbox"
+                  bind:checked={$autoRepairBrokenSymlinks}
+                />
+                <span class="slider"></span>
+              </label>
+            </div>
+          </div>
+
+          <div class="option-card">
+            <div class="flex items-start justify-between gap-5">
+              <div class="space-y-2">
+                <label
+                  for="disableSeasonPackCheck"
+                  class="block text-base font-semibold text-gray-800 dark:text-gray-100"
+                >
+                  Désactiver la recherche de packs saisons
+                </label>
+
+                <p class="text-sm leading-relaxed text-gray-500 dark:text-gray-400">
+                  Si activé, Season It saute l’étape qui vérifie si un pack saison est disponible.
+                  Il lance directement la recherche et uniquement sur les épisodes brisés.
+                </p>
+              </div>
+
+              <label class="switch" aria-label="Désactiver la recherche de packs saisons">
+                <input
+                  id="disableSeasonPackCheck"
+                  type="checkbox"
+                  bind:checked={$disableSeasonPackCheck}
+                />
+                <span class="slider"></span>
+              </label>
+            </div>
+          </div>
+
+          <div class="option-card">
+            <div class="flex items-start justify-between gap-5">
+              <div class="space-y-2">
+                <label
+                  for="skipEpisodeDeletion"
+                  class="block text-base font-semibold text-gray-800 dark:text-gray-100"
+                >
+                  Ne pas supprimer les épisodes avant recherche
+                </label>
+
+                <p class="text-sm leading-relaxed text-gray-500 dark:text-gray-400">
+                  Si activé, les épisodes existants ne seront pas supprimés. Attention :
+                  tant que Sonarr voit encore des épisodes valides, il ne recherchera pas
+                  de pack saison.
+                </p>
+              </div>
+
+              <label class="switch" aria-label="Ne pas supprimer les épisodes avant recherche">
+                <input
+                  id="skipEpisodeDeletion"
+                  type="checkbox"
+                  bind:checked={$skipEpisodeDeletion}
+                />
+                <span class="slider"></span>
+              </label>
+            </div>
+          </div>
         </div>
       </fieldset>
 
@@ -429,13 +589,17 @@
                   />
                 </div>
 
-                <div class="flex items-center gap-2 mt-7">
-                  <input
-                    id={`ad-enabled-${index}`}
-                    type="checkbox"
-                    bind:checked={$alldebridInstances[index].enabled}
-                  />
-                  <label for={`ad-enabled-${index}`} class="text-sm text-gray-600">
+                <div class="flex items-center gap-3 mt-7">
+                  <label class="switch switch-small" aria-label="Instance AllDebrid activée">
+                    <input
+                      id={`ad-enabled-${index}`}
+                      type="checkbox"
+                      bind:checked={$alldebridInstances[index].enabled}
+                    />
+                    <span class="slider"></span>
+                  </label>
+
+                  <label for={`ad-enabled-${index}`} class="text-sm text-gray-600 dark:text-gray-300">
                     Instance activée
                   </label>
                 </div>
@@ -581,6 +745,11 @@
     transform: scale(0.98);
   }
 
+  .btn-primary:disabled {
+    opacity: 0.7;
+    cursor: not-allowed;
+  }
+
   .btn-outline {
     display: inline-flex;
     align-items: center;
@@ -595,6 +764,10 @@
 
   .btn-outline:hover {
     background: #ecfdf5;
+  }
+
+  :global(.dark) .btn-outline:hover {
+    background: rgba(16, 185, 129, 0.12);
   }
 
   .explorer-btn {
@@ -624,4 +797,144 @@
     border-color: #34d399;
     background: rgba(52, 211, 153, 0.08);
   }
+
+  .option-card {
+    padding: 1.25rem;
+    border-radius: 1rem;
+    border: 1px solid rgba(148, 163, 184, 0.25);
+    background:
+      linear-gradient(
+        135deg,
+        rgba(255, 255, 255, 0.9),
+        rgba(240, 253, 250, 0.72)
+      );
+    box-shadow:
+      0 10px 25px rgba(15, 23, 42, 0.08),
+      inset 0 1px 0 rgba(255, 255, 255, 0.55);
+    backdrop-filter: blur(14px);
+    transition:
+      transform 0.2s ease,
+      border-color 0.2s ease,
+      box-shadow 0.2s ease;
+  }
+
+  .option-card:hover {
+    transform: translateY(-1px);
+    border-color: rgba(16, 185, 129, 0.45);
+    box-shadow:
+      0 14px 32px rgba(15, 23, 42, 0.12),
+      0 0 0 1px rgba(16, 185, 129, 0.08);
+  }
+
+  :global(.dark) .option-card {
+    border-color: rgba(255, 255, 255, 0.12);
+    background:
+      linear-gradient(
+        135deg,
+        rgba(31, 41, 55, 0.82),
+        rgba(15, 23, 42, 0.92)
+      );
+    box-shadow:
+      0 10px 25px rgba(0, 0, 0, 0.25),
+      inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  }
+
+  :global(.dark) .option-card:hover {
+    border-color: rgba(52, 211, 153, 0.45);
+    box-shadow:
+      0 14px 32px rgba(0, 0, 0, 0.35),
+      0 0 0 1px rgba(52, 211, 153, 0.08);
+  }
+
+  .switch {
+    position: relative;
+    display: inline-flex;
+    width: 44px;
+    height: 24px;
+    flex-shrink: 0;
+    cursor: pointer;
+  }
+
+  .switch-small {
+    width: 40px;
+    height: 22px;
+  }
+
+  .switch input {
+    position: absolute;
+    opacity: 0;
+    width: 0;
+    height: 0;
+  }
+
+  .slider {
+    position: absolute;
+    inset: 0;
+    border-radius: 999px;
+    background: linear-gradient(135deg, #cbd5e1, #94a3b8);
+    box-shadow:
+      inset 0 2px 4px rgba(15, 23, 42, 0.18),
+      0 1px 2px rgba(15, 23, 42, 0.08);
+    transition:
+      background 0.25s ease,
+      box-shadow 0.25s ease;
+  }
+
+  .slider::before {
+    content: '';
+    position: absolute;
+    width: 18px;
+    height: 18px;
+    left: 3px;
+    top: 3px;
+    border-radius: 50%;
+    background: white;
+    box-shadow:
+      0 3px 8px rgba(15, 23, 42, 0.22),
+      inset 0 1px 0 rgba(255, 255, 255, 0.9);
+    transition:
+      transform 0.25s ease,
+      box-shadow 0.25s ease;
+  }
+
+  .switch-small .slider::before {
+    width: 16px;
+    height: 16px;
+  }
+
+  .switch input:checked + .slider {
+    background: linear-gradient(135deg, #10b981, #0d9488);
+    box-shadow:
+      0 0 0 3px rgba(16, 185, 129, 0.12),
+      inset 0 2px 4px rgba(15, 23, 42, 0.16);
+  }
+
+  .switch input:checked + .slider::before {
+    transform: translateX(20px);
+    box-shadow:
+      0 3px 9px rgba(5, 150, 105, 0.32),
+      inset 0 1px 0 rgba(255, 255, 255, 0.9);
+  }
+
+  .switch-small input:checked + .slider::before {
+    transform: translateX(18px);
+  }
+
+  .switch input:focus-visible + .slider {
+    outline: 3px solid rgba(16, 185, 129, 0.35);
+    outline-offset: 3px;
+  }
+
+  :global(.dark) .slider {
+    background: linear-gradient(135deg, #475569, #334155);
+  }
+
+  :global(.dark) .slider::before {
+    background: #f8fafc;
+  }
+
+  :global(.dark) .switch input:checked + .slider {
+    background: linear-gradient(135deg, #34d399, #14b8a6);
+  }
+
 </style>
