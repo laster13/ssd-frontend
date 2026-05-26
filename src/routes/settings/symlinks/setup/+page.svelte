@@ -465,9 +465,9 @@
               </label>
 
               <p class="text-sm leading-relaxed text-gray-500 dark:text-gray-400">
-                Si activé, les épisodes existants ne seront pas supprimés. Attention :
-                tant que Sonarr voit encore des épisodes valides, il ne recherchera pas
-                de pack saison.
+                Si activé, Season It conserve les épisodes déjà présents avant de relancer une recherche.
+                Aucun fichier existant n’est supprimé par Season It avant l’action Sonarr.
+                Attention : si la recherche de pack saison est autorisée, Sonarr peut quand même télécharger ou importer un pack selon vos profils de qualité.
               </p>
             </div>
 
