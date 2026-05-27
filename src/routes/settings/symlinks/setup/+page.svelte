@@ -18,10 +18,6 @@
   const alldebridInstances = writable([]);
   const autoRepairBrokenSymlinks = writable(false);
 
-  // === Options Season Pack / Season It ===
-  const disableSeasonPackCheck = writable(false);
-  const skipEpisodeDeletion = writable(false);
-
   const saving = writable(false);
   const toast = writable(null);
 
@@ -105,8 +101,6 @@
       tmdbApiKey.set(data.tmdb_api_key || '');
       discordWebhook.set(data.discord_webhook_url || '');
       autoRepairBrokenSymlinks.set(data.auto_repair_broken_symlinks ?? false);
-      disableSeasonPackCheck.set(data.disable_season_pack_check ?? false);
-      skipEpisodeDeletion.set(data.skip_episode_deletion ?? false);
       alldebridInstances.set(
         (data.alldebrid_instances || []).map(instance => ({
           name: instance.name || '',
@@ -150,9 +144,6 @@
         tmdb_api_key: $tmdbApiKey,
         discord_webhook_url: $discordWebhook,
         auto_repair_broken_symlinks: $autoRepairBrokenSymlinks,
-        // Options Season Pack / Season It
-        disable_season_pack_check: $disableSeasonPackCheck,
-        skip_episode_deletion: $skipEpisodeDeletion,
         alldebrid_instances: cleanedInstances
       };
 
@@ -378,27 +369,10 @@
       </div>
     </fieldset>
 
-    <fieldset class="space-y-6">
-      <legend class="legend-azure text-lg font-semibold">🔔 Notifications Discord</legend>
-
-      <div class="flex items-center gap-3 bg-white/70 dark:bg-gray-800/60 backdrop-blur-lg p-4 rounded-xl shadow border border-gray-200 dark:border-gray-700">
-        <BellRing class="w-5 h-5 text-indigo-500" />
-        <label for="discordWebhook" class="sr-only">Discord Webhook</label>
-        <input
-          id="discordWebhook"
-          type="text"
-          bind:value={$discordWebhook}
-          placeholder="https://discord.com/api/webhooks/xxxxx/xxxxx"
-          class="flex-1 input"
-        />
-      </div>
-    </fieldset>
-
     <fieldset class="space-y-5">
       <legend class="legend-azure text-lg font-semibold">🛠️ Options automatiques</legend>
 
       <div class="grid gap-5">
-
         <div class="option-card">
           <div class="flex items-start justify-between gap-5">
             <div class="space-y-2">
@@ -414,6 +388,11 @@
                 les supprime automatiquement, puis relance Radarr ou Sonarr afin de
                 régénérer des liens propres.
               </p>
+
+              <p class="text-sm leading-relaxed text-emerald-600 dark:text-emerald-400">
+                Mode sécurisé SeasonIt actif : les épisodes ne sont supprimés que si
+                un pack validé par Sonarr est confirmé en cache AllDebrid.
+              </p>
             </div>
 
             <label class="switch" aria-label="Réparer automatiquement les symlinks brisés">
@@ -426,65 +405,8 @@
             </label>
           </div>
         </div>
-
-        <div class="option-card">
-          <div class="flex items-start justify-between gap-5">
-            <div class="space-y-2">
-              <label
-                for="disableSeasonPackCheck"
-                class="block text-base font-semibold text-gray-800 dark:text-gray-100"
-              >
-                Désactiver la recherche de packs Saisons
-              </label>
-
-              <p class="text-sm leading-relaxed text-gray-500 dark:text-gray-400">
-                Si activé, Season It saute l’étape qui vérifie si un pack saison est disponible.
-                Il lance directement la recherche et uniquement sur les épisodes brisés .
-              </p>
-            </div>
-
-            <label class="switch" aria-label="Désactiver la vérification d’éligibilité">
-              <input
-                id="disableSeasonPackCheck"
-                type="checkbox"
-                bind:checked={$disableSeasonPackCheck}
-              />
-              <span class="slider"></span>
-            </label>
-          </div>
-        </div>
-
-        <div class="option-card">
-          <div class="flex items-start justify-between gap-5">
-            <div class="space-y-2">
-              <label
-                for="skipEpisodeDeletion"
-                class="block text-base font-semibold text-gray-800 dark:text-gray-100"
-              >
-                Ne pas supprimer les épisodes avant recherche
-              </label>
-
-              <p class="text-sm leading-relaxed text-gray-500 dark:text-gray-400">
-                Si activé, Season It conserve les épisodes déjà présents avant de relancer une recherche.
-                Aucun fichier existant n’est supprimé par Season It avant l’action Sonarr.
-                Attention : si la recherche de pack saison est autorisée, Sonarr peut quand même télécharger ou importer un pack selon vos profils de qualité.
-              </p>
-            </div>
-
-            <label class="switch" aria-label="Ne pas supprimer les épisodes existants">
-              <input
-                id="skipEpisodeDeletion"
-                type="checkbox"
-                bind:checked={$skipEpisodeDeletion}
-              />
-              <span class="slider"></span>
-            </label>
-          </div>
-        </div>
-
       </div>
     </fieldset>
-
     <fieldset class="space-y-4">
       <legend class="legend-azure text-lg font-semibold">
         🧩 Instances AllDebrid –
