@@ -4,8 +4,29 @@
     import { goto } from '$app/navigation';
 
     const BASE_URL = import.meta.env.VITE_BACKEND_URL_HTTPS || '';
+
     function openUpdatePage() {
         goto(`${BASE_URL}/settings/update`);
+    }
+
+    function getUpdateTitle(type: string) {
+        if (type === 'backend') {
+            return 'Mise à jour BACKEND disponible';
+        }
+
+        if (type === 'frontend') {
+            return 'Mise à jour FRONTEND disponible';
+        }
+
+        if (type === 'saison_frontend') {
+            return 'Mise à jour SAISON FRONTEND disponible';
+        }
+
+        if (type === 'error') {
+            return 'Erreur de mise à jour';
+        }
+
+        return 'Mise à jour disponible';
     }
 </script>
 
@@ -36,13 +57,18 @@
 
         <div class="flex flex-col">
             <span class="text-xs font-semibold tracking-wide leading-tight">
-                {$updateNotification.type === 'backend'
-                    ? 'Mise à jour BACKEND disponible'
-                    : 'Mise à jour FRONTEND disponible'}
+                {getUpdateTitle($updateNotification.type)}
             </span>
+
             <span class="text-[11px] text-gray-600 dark:text-gray-300 mt-0.5 leading-snug">
                 {$updateNotification.message}
             </span>
+
+            {#if $updateNotification.version}
+                <span class="text-[10px] text-gray-500 dark:text-gray-400 mt-0.5 leading-snug">
+                    Version : {$updateNotification.version}
+                </span>
+            {/if}
         </div>
     </div>
 {/if}

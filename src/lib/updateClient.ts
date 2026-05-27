@@ -4,18 +4,36 @@ import { updateNotification } from "$lib/stores/symlinks";
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
 
-// état simple qu'on peut réutiliser si besoin
+// État simple réutilisé par la page de mise à jour
 export const connectionStatus = writable<"connected" | "disconnected">("disconnected");
 export const updateMessage = writable("");
 
 let initialized = false;
 let sse: EventSource | null = null;
 
-// 🔎 récupère la notif persistante en base
+type UpdateType = "backend" | "frontend" | "saison_frontend";
+
+function getUpdateType(evt: string): UpdateType {
+  if (evt.includes("backend")) {
+    return "backend";
+  }
+
+  if (evt.includes("saison_frontend")) {
+    return "saison_frontend";
+  }
+
+  return "frontend";
+}
+
+// Récupère la notification persistante en base
 async function loadPersistentNotification() {
   try {
     const res = await fetch(`${API_BASE_URL}/update/persistent`);
-    if (!res.ok) return;
+
+    if (!res.ok) {
+      return;
+    }
+
     const data = await res.json();
 
     if (data.has_update) {
@@ -32,11 +50,13 @@ async function loadPersistentNotification() {
   }
 }
 
-// 🚀 à appeler une seule fois (depuis le layout)
+// À appeler une seule fois depuis le layout
 export function initUpdateClient() {
-  if (initialized) return;
-  initialized = true;
+  if (initialized) {
+    return;
+  }
 
+  initialized = true;
   sse = new EventSource(`${API_BASE_URL}/symlinks/events`);
 
   sse.onopen = async () => {
@@ -48,26 +68,39 @@ export function initUpdateClient() {
     connectionStatus.set("disconnected");
   };
 
-  // 🛰️ Quand le backend détecte une mise à jour (via scheduler ou endpoint)
-  ["update_available_backend", "update_available_frontend"].forEach((evt) => {
-    sse!.addEventListener(evt, async (event) => {
+  [
+    "update_available_backend",
+    "update_available_frontend",
+    "update_available_saison_frontend",
+  ].forEach((evt) => {
+    sse?.addEventListener(evt, async (event) => {
       const data = JSON.parse(event.data);
-      updateMessage.set(data.message);
 
+      updateMessage.set(data.message);
       updateNotification.set({
-        type: evt.includes("backend") ? "backend" : "frontend",
+        type: getUpdateType(evt),
         message: data.message,
         version: data.version || null,
       });
     });
   });
 
-  // ✅ Quand une mise à jour est terminée
+  sse.addEventListener("update_error", (event) => {
+    const data = JSON.parse(event.data);
+
+    updateMessage.set(data.message);
+    updateNotification.set({
+      type: "error",
+      message: data.message,
+      version: null,
+    });
+  });
+
   sse.addEventListener("update_finished", async (event) => {
     const data = JSON.parse(event.data);
+
     updateMessage.set(data.message);
 
-    // On efface la bannière et on recharge l'état persistant
     updateNotification.set(null);
     await loadPersistentNotification();
   });

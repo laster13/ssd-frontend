@@ -5,11 +5,18 @@
   import { updateNotification } from "$lib/stores/symlinks";
   import { connectionStatus } from "$lib/updateClient";
 
+  type UpdateTarget = "backend" | "frontend" | "saison_frontend";
+
   const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
+
   const backendVersion = writable("—");
   const frontendVersion = writable("—");
+  const saisonFrontendVersion = writable("—");
+
   const updatingBackend = writable(false);
   const updatingFrontend = writable(false);
+  const updatingSaisonFrontend = writable(false);
+
   const updateMessage = writable("");
   const updateData = writable<any | null>(null);
   const logs = writable<any[]>([]);
@@ -17,7 +24,7 @@
   const toast = writable<{ msg: string; type: string } | null>(null);
   const journalOpen = writable(true);
 
-  let autoCheckInterval: any = null; // 🕒 contrôle global de l’auto-check
+  let autoCheckInterval: any = null;
 
   // --- Filtrage du journal
   const filteredLogs = derived([logs, filter], ([$logs, $filter]) => {
@@ -42,15 +49,30 @@
     localStorage.setItem("updateLogs", JSON.stringify(get(logs)));
   }
 
+  function getUpdateLabel(target: UpdateTarget) {
+    if (target === "backend") return "BACKEND";
+    if (target === "frontend") return "FRONTEND";
+    return "SAISON FRONTEND";
+  }
+
+  function setUpdating(target: UpdateTarget, value: boolean) {
+    if (target === "backend") updatingBackend.set(value);
+    if (target === "frontend") updatingFrontend.set(value);
+    if (target === "saison_frontend") updatingSaisonFrontend.set(value);
+  }
+
   // --- Chargement des versions
   async function loadVersions() {
     try {
       const res = await fetch(`${API_BASE_URL}/update/check`);
       if (!res.ok) throw new Error("HTTP error");
+
       const data = await res.json();
 
-      backendVersion.set(data.backend.current);
-      frontendVersion.set(data.frontend.current);
+      backendVersion.set(data.backend?.current || "—");
+      frontendVersion.set(data.frontend?.current || "—");
+      saisonFrontendVersion.set(data.saison_frontend?.current || "—");
+
       updateData.set(data);
       updateMessage.set(data.message);
       log(data.message, "info");
@@ -75,6 +97,7 @@
     try {
       const res = await fetch(`${API_BASE_URL}/update/persistent`);
       if (!res.ok) return;
+
       const data = await res.json();
 
       if (data.has_update) {
@@ -92,11 +115,11 @@
   }
 
   // --- Lancement manuel d'une mise à jour
-  async function runUpdate(target: "backend" | "frontend") {
-    if (target === "backend") updatingBackend.set(true);
-    if (target === "frontend") updatingFrontend.set(true);
+  async function runUpdate(target: UpdateTarget) {
+    setUpdating(target, true);
 
-    const label = target.toUpperCase();
+    const label = getUpdateLabel(target);
+
     updateMessage.set(`🔧 Mise à jour ${label} en cours...`);
     log(`Mise à jour ${label} démarrée...`, "update");
 
@@ -104,19 +127,25 @@
     autoCheckInterval = null;
 
     try {
-      const res = await fetch(`${API_BASE_URL}/update/run/${target}`, { method: "POST" });
+      const res = await fetch(`${API_BASE_URL}/update/run/${target}`, {
+        method: "POST"
+      });
+
       const data = await res.json();
+
       updateMessage.set(data.message);
       log(data.message, "update");
       showToast(`✅ ${label} mis à jour avec succès`, "success");
 
       updateNotification.set(null);
       await loadPersistentNotification();
+      await loadVersions();
     } catch {
+      updateMessage.set(`❌ Erreur pendant la mise à jour ${label}.`);
+      log(`Erreur pendant la mise à jour ${label}.`, "error");
+      showToast(`❌ Erreur pendant la mise à jour ${label}`, "error");
     } finally {
-      if (target === "backend") updatingBackend.set(false);
-      if (target === "frontend") updatingFrontend.set(false);
-
+      setUpdating(target, false);
       startAutoCheck();
     }
   }
@@ -131,6 +160,7 @@
   // --- Auto-check périodique (toutes les 15 min)
   function startAutoCheck() {
     if (autoCheckInterval) clearInterval(autoCheckInterval);
+
     autoCheckInterval = setInterval(async () => {
       const data = await loadVersions();
       await loadPersistentNotification();
@@ -156,7 +186,7 @@
 
 <!-- ===== PAGE ===== -->
 <div
-  class="max-w-5xl mx-auto my-10 px-4 py-8 rounded-2xl shadow-lg transition bg-white dark:bg-neutral-900 text-neutral-900 dark:text-white border border-neutral-200 dark:border-neutral-700 space-y-8"
+  class="max-w-6xl mx-auto my-10 px-4 py-8 rounded-2xl shadow-lg transition bg-white dark:bg-neutral-900 text-neutral-900 dark:text-white border border-neutral-200 dark:border-neutral-700 space-y-8"
 >
   <!-- TOAST -->
   {#if $toast}
@@ -178,9 +208,10 @@
         🔄 Gestion des mises à jour
       </h1>
       <p class="text-gray-500 dark:text-gray-400 text-sm">
-        Suivez, mettez à jour et consultez l’historique du système
+        Suivez, mettez à jour et consultez l’historique du système.
       </p>
     </div>
+
     <span
       class={`text-sm font-semibold ${
         $connectionStatus === 'connected' ? 'text-green-600 dark:text-green-400' : 'text-gray-500'
@@ -206,16 +237,19 @@
   </div>
 
   <!-- CARTES -->
-  <div class="grid grid-cols-1 sm:grid-cols-2 gap-6">
+  <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
     <div
       class="p-6 rounded-xl bg-neutral-100 dark:bg-neutral-800 border border-neutral-300 dark:border-neutral-700 hover:shadow-lg transition"
     >
       <h2 class="text-xl font-semibold mb-2 flex items-center gap-2">📦 Backend</h2>
+
       <p class="text-2xl font-mono">{$backendVersion}</p>
+
       {#if $updateData?.backend?.has_update}
         <p class="text-amber-600 dark:text-amber-400 text-sm mt-2">
           Nouvelle version : {$updateData.backend.remote}
         </p>
+
         <button
           class="mt-4 bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-lg w-full font-semibold flex justify-center items-center gap-2 transition disabled:opacity-60"
           on:click={() => runUpdate("backend")}
@@ -235,11 +269,14 @@
       class="p-6 rounded-xl bg-neutral-100 dark:bg-neutral-800 border border-neutral-300 dark:border-neutral-700 hover:shadow-lg transition"
     >
       <h2 class="text-xl font-semibold mb-2 flex items-center gap-2">💅 Frontend</h2>
+
       <p class="text-2xl font-mono">{$frontendVersion}</p>
+
       {#if $updateData?.frontend?.has_update}
         <p class="text-amber-600 dark:text-amber-400 text-sm mt-2">
           Nouvelle version : {$updateData.frontend.remote}
         </p>
+
         <button
           class="mt-4 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg w-full font-semibold flex justify-center items-center gap-2 transition disabled:opacity-60"
           on:click={() => runUpdate("frontend")}
@@ -249,6 +286,33 @@
             <span class="loader w-4 h-4 border-2 border-t-transparent rounded-full animate-spin"></span>
           {/if}
           🎨 Mettre à jour le frontend
+        </button>
+      {:else}
+        <p class="text-gray-500 dark:text-gray-400 text-sm mt-2">À jour ✅</p>
+      {/if}
+    </div>
+
+    <div
+      class="p-6 rounded-xl bg-neutral-100 dark:bg-neutral-800 border border-neutral-300 dark:border-neutral-700 hover:shadow-lg transition"
+    >
+      <h2 class="text-xl font-semibold mb-2 flex items-center gap-2">🎬 Saison Frontend</h2>
+
+      <p class="text-2xl font-mono">{$saisonFrontendVersion}</p>
+
+      {#if $updateData?.saison_frontend?.has_update}
+        <p class="text-amber-600 dark:text-amber-400 text-sm mt-2">
+          Nouvelle version : {$updateData.saison_frontend.remote}
+        </p>
+
+        <button
+          class="mt-4 bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-lg w-full font-semibold flex justify-center items-center gap-2 transition disabled:opacity-60"
+          on:click={() => runUpdate("saison_frontend")}
+          disabled={$updatingSaisonFrontend}
+        >
+          {#if $updatingSaisonFrontend}
+            <span class="loader w-4 h-4 border-2 border-t-transparent rounded-full animate-spin"></span>
+          {/if}
+          🎬 Mettre à jour Saison Frontend
         </button>
       {:else}
         <p class="text-gray-500 dark:text-gray-400 text-sm mt-2">À jour ✅</p>
@@ -287,6 +351,7 @@
         >
           Tous
         </button>
+
         <button
           class={`px-2 py-1 text-sm rounded ${
             $filter === 'update' ? 'bg-emerald-600 text-white' : 'bg-neutral-300 dark:bg-neutral-700'
@@ -295,6 +360,7 @@
         >
           Mises à jour
         </button>
+
         <button
           class={`px-2 py-1 text-sm rounded ${
             $filter === 'error' ? 'bg-emerald-600 text-white' : 'bg-neutral-300 dark:bg-neutral-700'
@@ -303,12 +369,14 @@
         >
           Erreurs
         </button>
+
         <button
           class="px-2 py-1 text-sm rounded bg-red-600 hover:bg-red-700 text-white"
           on:click={clearLogs}
         >
           🧹 Effacer
         </button>
+
         <button
           class="px-2 py-1 text-sm rounded bg-neutral-400 dark:bg-neutral-700 hover:bg-neutral-500"
           on:click={() => journalOpen.update((v) => !v)}
@@ -325,7 +393,7 @@
       >
         {#each $filteredLogs as log (log.ts)}
           <div
-            class="py-2 sm:py-1 flex flex-col sm:flex-row sm:items-center sm:space-x-3 
+            class="py-2 sm:py-1 flex flex-col sm:flex-row sm:items-center sm:space-x-3
                    hover:bg-neutral-200/50 dark:hover:bg-neutral-700/30 rounded-lg px-2 transition"
           >
             <!-- Date + Type -->
@@ -363,6 +431,7 @@
   .scrollbar-hide::-webkit-scrollbar {
     display: none;
   }
+
   .scrollbar-hide {
     -ms-overflow-style: none;
     scrollbar-width: none;

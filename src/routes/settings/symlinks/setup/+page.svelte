@@ -17,6 +17,9 @@
 
   const alldebridInstances = writable([]);
   const autoRepairBrokenSymlinks = writable(false);
+  const autoSeasonarrMissingEnabled = writable(false);
+  const autoSeasonarrMissingRunIntervalMinutes = writable(180);
+  const autoSeasonarrMissingMaxShowsPerRun = writable(50);
 
   const saving = writable(false);
   const toast = writable(null);
@@ -101,6 +104,13 @@
       tmdbApiKey.set(data.tmdb_api_key || '');
       discordWebhook.set(data.discord_webhook_url || '');
       autoRepairBrokenSymlinks.set(data.auto_repair_broken_symlinks ?? false);
+      autoSeasonarrMissingEnabled.set(data.auto_seasonarr_missing_enabled ?? false);
+      autoSeasonarrMissingRunIntervalMinutes.set(
+        data.auto_seasonarr_missing_run_interval_minutes ?? 180
+      );
+      autoSeasonarrMissingMaxShowsPerRun.set(
+        data.auto_seasonarr_missing_max_shows_per_run ?? 50
+      );
       alldebridInstances.set(
         (data.alldebrid_instances || []).map(instance => ({
           name: instance.name || '',
@@ -144,6 +154,13 @@
         tmdb_api_key: $tmdbApiKey,
         discord_webhook_url: $discordWebhook,
         auto_repair_broken_symlinks: $autoRepairBrokenSymlinks,
+        auto_seasonarr_missing_enabled: $autoSeasonarrMissingEnabled,
+        auto_seasonarr_missing_run_interval_minutes: Number(
+          $autoSeasonarrMissingRunIntervalMinutes || 180
+        ),
+        auto_seasonarr_missing_max_shows_per_run: Number(
+          $autoSeasonarrMissingMaxShowsPerRun || 50
+        ),
         alldebrid_instances: cleanedInstances
       };
 
@@ -369,6 +386,26 @@
       </div>
     </fieldset>
 
+    <fieldset class="space-y-6">
+      <legend class="legend-azure text-lg font-semibold">🔔 Notifications Discord</legend>
+
+      <div class="flex items-center gap-3 bg-white/70 dark:bg-gray-800/60 backdrop-blur-lg p-4 rounded-xl shadow border border-gray-200 dark:border-gray-700">
+        <BellRing class="w-5 h-5 text-indigo-500" />
+
+        <label for="discordWebhook" class="sr-only">
+          Discord Webhook
+        </label>
+
+        <input
+          id="discordWebhook"
+          type="text"
+          bind:value={$discordWebhook}
+          placeholder="https://discord.com/api/webhooks/xxxxx/xxxxx"
+          class="flex-1 input"
+        />
+      </div>
+    </fieldset>
+
     <fieldset class="space-y-5">
       <legend class="legend-azure text-lg font-semibold">🛠️ Options automatiques</legend>
 
@@ -405,13 +442,112 @@
             </label>
           </div>
         </div>
+
+        <div class="option-card">
+          <div class="flex items-start justify-between gap-5">
+            <div class="space-y-2">
+              <label
+                for="autoSeasonarrMissingEnabled"
+                class="block text-base font-semibold text-gray-800 dark:text-gray-100"
+              >
+                Lancer automatiquement Seasonarr sur les épisodes manquants
+              </label>
+
+              <p class="text-sm leading-relaxed text-gray-500 dark:text-gray-400">
+                Si cette option est activée, SSD autorise le lancement automatique
+                de Seasonarr sur les séries qui ont des saisons terminées avec des
+                épisodes manquants.
+              </p>
+
+              <p class="text-sm leading-relaxed text-emerald-600 dark:text-emerald-400">
+                Mode sécurisé actif : aucune suppression n’est faite sans pack validé
+                par Sonarr et confirmé en cache AllDebrid.
+              </p>
+            </div>
+
+            <label class="switch" aria-label="Lancer automatiquement Seasonarr sur les épisodes manquants">
+              <input
+                id="autoSeasonarrMissingEnabled"
+                type="checkbox"
+                bind:checked={$autoSeasonarrMissingEnabled}
+              />
+              <span class="slider"></span>
+            </label>
+          </div>
+
+          <div class="mt-5 grid gap-4 sm:grid-cols-2">
+            <div>
+              <label
+                for="autoSeasonarrMissingRunIntervalMinutes"
+                class="block text-sm font-medium text-gray-700 dark:text-gray-300"
+              >
+                Intervalle entre deux lancements
+              </label>
+
+              <div class="mt-2 flex items-center gap-3">
+                <input
+                  id="autoSeasonarrMissingRunIntervalMinutes"
+                  type="number"
+                  min="15"
+                  step="15"
+                  bind:value={$autoSeasonarrMissingRunIntervalMinutes}
+                  class="input w-28"
+                />
+
+                <span class="text-sm text-gray-500 dark:text-gray-400">
+                  minutes
+                </span>
+              </div>
+
+              <p class="mt-2 text-xs text-gray-500 dark:text-gray-400">
+                Minimum sécurisé : 15 minutes. Recommandé : 180 minutes.
+              </p>
+            </div>
+
+            <div>
+              <label
+                for="autoSeasonarrMissingMaxShowsPerRun"
+                class="block text-sm font-medium text-gray-700 dark:text-gray-300"
+              >
+                Séries maximum par passage
+              </label>
+
+              <div class="mt-2 flex items-center gap-3">
+                <input
+                  id="autoSeasonarrMissingMaxShowsPerRun"
+                  type="number"
+                  min="1"
+                  max="500"
+                  step="1"
+                  bind:value={$autoSeasonarrMissingMaxShowsPerRun}
+                  class="input w-28"
+                />
+
+                <span class="text-sm text-gray-500 dark:text-gray-400">
+                  séries
+                </span>
+              </div>
+
+              <p class="mt-2 text-xs text-gray-500 dark:text-gray-400">
+                Défaut : 50. Maximum sécurisé : 500.
+              </p>
+            </div>
+          </div>
+        </div>
       </div>
     </fieldset>
+
     <fieldset class="space-y-4">
       <legend class="legend-azure text-lg font-semibold">
         🧩 Instances AllDebrid –
         <span class="text-sm font-normal">scan et suppression des torrents orphelins</span>
       </legend>
+
+      <p class="text-sm leading-relaxed text-emerald-600 dark:text-emerald-400">
+        Au moins une instance AllDebrid active avec une clé API valide est nécessaire :
+        Seasonarr l’utilise pour vérifier si les releases validées par Sonarr sont
+        disponibles en cache AllDebrid avant toute suppression sécurisée.
+      </p>
 
       <div class="space-y-4">
         {#each $alldebridInstances as instance, index (index)}
@@ -583,6 +719,15 @@
     font-weight: 500;
   }
 
+  .input {
+    border-radius: 0.5rem;
+    border: 1px solid rgba(100, 116, 139, 0.25);
+    padding: 0.5rem 1rem;
+    background-color: rgba(255, 255, 255, 0.9);
+    color: inherit;
+    transition: border-color 0.2s ease, background-color 0.2s ease;
+  }
+
   .sr-only {
     position: absolute;
     width: 1px;
@@ -593,15 +738,6 @@
     clip: rect(0, 0, 0, 0);
     white-space: nowrap;
     border: 0;
-  }
-
-  .input {
-    border-radius: 0.5rem;
-    border: 1px solid rgba(100, 116, 139, 0.25);
-    padding: 0.5rem 1rem;
-    background-color: rgba(255, 255, 255, 0.9);
-    color: inherit;
-    transition: border-color 0.2s ease, background-color 0.2s ease;
   }
 
   :global(.dark) .input {
