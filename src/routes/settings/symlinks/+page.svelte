@@ -124,18 +124,29 @@
   // --- Open in Arr (Sonarr / Radarr) ---
   async function openArr(item: any) {
     const { root, relative } = relativeToRoot(item.symlink);
+
     if (!relative || !root) {
       alert("Impossible de déterminer le chemin relatif à la racine.");
       return;
     }
+
     try {
       let json;
+
       if (item.type.toLowerCase() === "sonarr") {
         json = await fetchSonarrUrl(relative);
       } else if (item.type.toLowerCase() === "radarr") {
         json = await fetchRadarrUrl(relative.split("/")[0]);
-      } else return;
-      window.location.href = json.url;
+      } else {
+        return;
+      }
+
+      if (!json?.url) {
+        alert(`URL ${item.type} introuvable.`);
+        return;
+      }
+
+      window.open(json.url, "_blank", "noopener,noreferrer");
     } catch (e: any) {
       alert(`Erreur ouverture ${item.type}: ${e?.message || e}`);
     }

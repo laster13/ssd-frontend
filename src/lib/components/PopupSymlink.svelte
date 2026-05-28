@@ -51,15 +51,23 @@
 
   async function openSeasonarr() {
     if (item.type.toLowerCase() !== "sonarr") return;
+
     loadingSeasonarr = true;
+
     try {
       const res = await fetch(
         `${baseURL}/api/v1/symlinks/get-sonarr-id/${encodeURIComponent(item.symlink)}`
       );
+
       if (res.ok) {
         const json = await res.json();
+
         if (json.id) {
-          window.location.href = `${import.meta.env.VITE_BACKEND_URL_HTTPS}/season/shows/${json.id}`;
+          window.open(
+            `${import.meta.env.VITE_BACKEND_URL_HTTPS}/season/shows/${json.id}`,
+            "_blank",
+            "noopener,noreferrer"
+          );
         }
       }
     } finally {
