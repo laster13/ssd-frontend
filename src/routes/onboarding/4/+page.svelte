@@ -49,8 +49,18 @@
   const autoSeasonarrMissingEnabled = writable(false);
   const autoSeasonarrMissingRunIntervalMinutes = writable(180);
   const autoSeasonarrMissingMaxShowsPerRun = writable(50);
+  const orphanScanCheckEverySeconds = writable(60);
+  const orphanScanIntervalMinutes = writable(180);
 
-  const saving = writable(false);  const toast = writable<ToastState>(null);
+  $: hasActiveAllDebridInstance = $alldebridInstances.some(
+    (instance) =>
+      Boolean(instance.enabled) &&
+      Boolean(instance.api_key?.trim()) &&
+      Boolean(instance.mount_path?.trim())
+  );
+
+  const saving = writable(false);
+  const toast = writable<ToastState>(null);
 
   // === Explorateur ===
   let showExplorer = false;
@@ -141,6 +151,12 @@
       autoSeasonarrMissingMaxShowsPerRun.set(
         data.auto_seasonarr_missing_max_shows_per_run ?? 50
       );
+      orphanScanCheckEverySeconds.set(
+        data.orphan_scan_check_every_seconds ?? 60
+      );
+      orphanScanIntervalMinutes.set(
+        data.orphan_scan_interval_minutes ?? 180
+      );
 
       alldebridInstances.set(
         (data.alldebrid_instances || []).map((instance: Partial<AllDebridInstance>) => ({
@@ -193,6 +209,12 @@
         ),
         auto_seasonarr_missing_max_shows_per_run: Number(
           $autoSeasonarrMissingMaxShowsPerRun || 50
+        ),
+        orphan_scan_check_every_seconds: Number(
+          $orphanScanCheckEverySeconds || 60
+        ),
+        orphan_scan_interval_minutes: Number(
+          $orphanScanIntervalMinutes || 180
         ),
 
         alldebrid_instances: cleanedInstances
@@ -561,6 +583,88 @@
               </div>
             </div>
           </div>
+
+          {#if hasActiveAllDebridInstance}
+            <div class="option-card">
+              <div class="space-y-5">
+                <div class="space-y-2">
+                  <h3 class="block text-base font-semibold text-gray-800 dark:text-gray-100">
+                    Orphelins AllDebrid / Decypharr
+                  </h3>
+
+                  <p class="text-sm leading-relaxed text-gray-500 dark:text-gray-400">
+                    Ces réglages contrôlent le scan et la suppression automatique des
+                    torrents orphelins quand au moins une instance AllDebrid est activée.
+                  </p>
+
+                  <p class="text-sm leading-relaxed text-emerald-600 dark:text-emerald-400">
+                    Instance AllDebrid active détectée : le backend peut lancer le scan
+                    orphelins automatiquement.
+                  </p>
+                </div>
+
+                <div class="grid gap-4 sm:grid-cols-2">
+                  <div>
+                    <label
+                      for="orphanScanCheckEverySeconds"
+                      class="block text-sm font-medium text-gray-700 dark:text-gray-300"
+                    >
+                      Vérifier l’activation toutes les
+                    </label>
+
+                    <div class="mt-2 flex items-center gap-3">
+                      <input
+                        id="orphanScanCheckEverySeconds"
+                        type="number"
+                        min="10"
+                        max="3600"
+                        step="10"
+                        bind:value={$orphanScanCheckEverySeconds}
+                        class="input w-28"
+                      />
+
+                      <span class="text-sm text-gray-500 dark:text-gray-400">
+                        secondes
+                      </span>
+                    </div>
+
+                    <p class="mt-2 text-xs text-gray-500 dark:text-gray-400">
+                      Défaut : 60 secondes. Minimum sécurisé : 10 secondes.
+                    </p>
+                  </div>
+
+                  <div>
+                    <label
+                      for="orphanScanIntervalMinutes"
+                      class="block text-sm font-medium text-gray-700 dark:text-gray-300"
+                    >
+                      Relancer le scan orphelins toutes les
+                    </label>
+
+                    <div class="mt-2 flex items-center gap-3">
+                      <input
+                        id="orphanScanIntervalMinutes"
+                        type="number"
+                        min="15"
+                        max="1440"
+                        step="15"
+                        bind:value={$orphanScanIntervalMinutes}
+                        class="input w-28"
+                      />
+
+                      <span class="text-sm text-gray-500 dark:text-gray-400">
+                        minutes
+                      </span>
+                    </div>
+
+                    <p class="mt-2 text-xs text-gray-500 dark:text-gray-400">
+                      Défaut : 180 minutes. Minimum sécurisé : 15 minutes.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          {/if}
         </div>
       </fieldset>
 
@@ -658,7 +762,7 @@
                   </label>
 
                   <label for={`ad-enabled-${index}`} class="text-sm text-gray-600 dark:text-gray-300">
-                    Instance activée
+                    {$alldebridInstances[index].enabled ? 'Instance activée' : 'Instance désactivée'}
                   </label>
                 </div>
               </div>
