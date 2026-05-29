@@ -36,7 +36,10 @@
   // === Explorateur ===
   let showExplorer = false;
   let explorerIndex = null;
+  let explorerTarget = 'links'; // 'links' ou 'mount'
   let defaultMediaPath = '';
+  let explorerStartPath = '';
+  let detectingMountDirs = false;
 
   async function initDefaultPath() {
     try {
@@ -54,12 +57,24 @@
 
   function openExplorer(index = null) {
     explorerIndex = index;
+    explorerTarget = 'links';
+
+    explorerStartPath =
+      index !== null && $linksDirs[index]?.path
+        ? $linksDirs[index].path
+        : defaultMediaPath;
+
     showExplorer = true;
+  }
+
+  function addMountDir() {
+    mountDirs.update(dirs => [...dirs, '']);
   }
 
   function handleSelect(paths) {
     if (!paths || paths.length === 0) {
       showExplorer = false;
+      explorerIndex = null;
       return;
     }
 
@@ -142,7 +157,7 @@
   }
 
   // === SAUVEGARDE CONFIG ===
-  async function saveConfig() {
+  async function saveConfig(showSuccessToast = true) {
     saving.set(true);
 
     try {
@@ -192,7 +207,10 @@
       });
 
       if (res.ok) {
-        showToast('✅ Configuration complète sauvegardée !');
+        if (showSuccessToast) {
+          showToast('✅ Configuration complète sauvegardée !');
+        }
+
         await loadConfig();
       } else {
         showToast('❌ Erreur lors de la sauvegarde', 'error');
@@ -204,6 +222,35 @@
     }
   }
 
+  async function detectMountDirs() {
+    detectingMountDirs = true;
+
+    try {
+      await saveConfig(false);
+
+      const res = await fetch('/api/v1/symlinks/detect-mount-dirs', {
+        method: 'POST'
+      });
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.detail || 'Erreur pendant la détection des mount dirs');
+      }
+
+      const data = await res.json();
+
+      mountDirs.set(data.mount_dirs || []);
+
+      showToast(
+        `✅ ${data.detected_count || 0} mount dir(s) détecté(s) en ${data.elapsed || 0}s`
+      );
+    } catch (e) {
+      showToast(e.message || '❌ Erreur pendant la détection des mount dirs', 'error');
+    } finally {
+      detectingMountDirs = false;
+    }
+  }
+
   // === LIENS SYMLINKS ===
   function addLinksDir() {
     linksDirs.update(dirs => [...dirs, { path: '', manager: 'sonarr' }]);
@@ -211,11 +258,6 @@
 
   function removeLinksDir(index) {
     linksDirs.update(dirs => dirs.filter((_, i) => i !== index));
-  }
-
-  // === DOSSIERS MOUNT / WEBDAV ===
-  function addMountDir() {
-    mountDirs.update(dirs => [...dirs, '']);
   }
 
   function removeMountDir(index) {
@@ -328,38 +370,69 @@
       <legend class="legend-azure text-lg font-semibold">📦 Dossiers mount / WebDAV</legend>
 
       <p class="text-sm text-gray-500 dark:text-gray-400">
-        Ces chemins correspondent aux dossiers réellement montés, par exemple
-        <code>/mnt/alldebrid/__all__</code>. Le backend les utilise comme racines de
-        référence pour résoudre les cibles des symlinks.
+        Ces chemins sont détectés automatiquement depuis les cibles des symlinks.
+        Tu peux ensuite choisir, modifier ou supprimer ceux que tu veux garder.
       </p>
 
-      <div class="space-y-3">
-        {#each $mountDirs as mountDir, index (index)}
-          <div
-            class="flex flex-col md:flex-row gap-3 bg-white/70 dark:bg-gray-800/60 backdrop-blur-lg p-4 rounded-xl shadow border border-gray-200 dark:border-gray-700"
-          >
-            <input
-              type="text"
-              bind:value={$mountDirs[index]}
-              placeholder="/mnt/alldebrid/__all__"
-              class="flex-1 input font-medium"
-            />
+      <div class="flex flex-wrap gap-3">
+        <button
+          type="button"
+          on:click={detectMountDirs}
+          class="btn-outline"
+          disabled={detectingMountDirs}
+        >
+          {#if detectingMountDirs}
+            <Loader2 class="animate-spin w-4 h-4" />
+            Détection…
+          {:else}
+            <FolderPlus class="w-4 h-4" />
+            Détecter les mount dirs
+          {/if}
+        </button>
 
-            <button
-              type="button"
-              on:click={() => removeMountDir(index)}
-              class="text-red-500 hover:text-red-600 hover:scale-110 transition"
-              aria-label="Supprimer ce dossier mount"
-            >
-              <Trash2 class="w-5 h-5" />
-            </button>
-          </div>
-        {/each}
+        <button
+          type="button"
+          on:click={addMountDir}
+          class="btn-outline"
+        >
+          <FolderPlus class="w-4 h-4" />
+          Ajouter un mount manuel
+        </button>
       </div>
 
-      <button type="button" on:click={addMountDir} class="btn-outline">
-        <FolderPlus class="w-4 h-4" /> Ajouter un dossier mount
-      </button>
+      {#if $mountDirs.length === 0}
+        <div class="text-sm text-gray-500 dark:text-gray-400 bg-white/70 dark:bg-gray-800/60 p-4 rounded-xl border border-gray-200 dark:border-gray-700">
+          Aucun mount dir détecté pour le moment. Configure tes dossiers symlinks, puis lance la détection.
+        </div>
+      {:else}
+        <div class="space-y-3">
+          {#each $mountDirs as mountDir, index (index)}
+            <div
+              class="flex flex-col md:flex-row gap-3 bg-white/70 dark:bg-gray-800/60 backdrop-blur-lg p-4 rounded-xl shadow border border-gray-200 dark:border-gray-700"
+            >
+              <input
+                type="text"
+                bind:value={$mountDirs[index]}
+                placeholder="/mnt/alldebrid/__all__"
+                class="flex-1 input font-medium"
+              />
+
+              <span class="input font-medium opacity-70 select-none">
+                Mount
+              </span>
+
+              <button
+                type="button"
+                on:click={() => removeMountDir(index)}
+                class="text-red-500 hover:text-red-600 hover:scale-110 transition"
+                aria-label="Supprimer ce dossier mount"
+              >
+                <Trash2 class="w-5 h-5" />
+              </button>
+            </div>
+          {/each}
+        </div>
+      {/if}
     </fieldset>
 
     <fieldset class="space-y-6">
