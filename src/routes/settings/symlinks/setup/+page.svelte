@@ -40,6 +40,14 @@
   let defaultMediaPath = '';
   let explorerStartPath = '';
   let detectingMountDirs = false;
+  let retargetSourceMount = '';
+  let retargetDestinationMount = '';
+  let retargetCount = null;
+  let retargetLoading = false;
+  let retargetApplying = false;
+  let retargetResult = null;
+  let retargetConfirm = '';
+  let retargetTestDone = false;
 
   async function initDefaultPath() {
     try {
@@ -251,6 +259,118 @@
     }
   }
 
+  async function refreshRetargetCount(resetTestDone = true, clearResult = true) {
+    if (clearResult) {
+      retargetResult = null;
+    }
+
+    retargetCount = null;
+
+    if (resetTestDone) {
+      retargetTestDone = false;
+    }
+
+    if (!retargetSourceMount || !retargetDestinationMount) {
+      showToast('Choisis une source et une destination', 'error');
+      return;
+    }
+
+    if (retargetSourceMount === retargetDestinationMount) {
+      showToast('Source et destination doivent être différentes', 'error');
+      return;
+    }
+
+    retargetLoading = true;
+
+    try {
+      const res = await fetch('/api/v1/symlinks/retarget/count', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          source_mount: retargetSourceMount,
+          destination_mount: retargetDestinationMount
+        })
+      });
+
+      const data = await res.json().catch(() => ({}));
+
+      if (!res.ok) {
+        throw new Error(data.detail || 'Erreur pendant le comptage retarget');
+      }
+
+      retargetCount = data.count;
+      showToast(`✅ ${data.count} symlink(s) concerné(s)`);
+    } catch (e) {
+      showToast(e.message || '❌ Erreur retarget count', 'error');
+    } finally {
+      retargetLoading = false;
+    }
+  }
+
+  async function applyRetarget(limit = null) {
+    retargetResult = null;
+
+    if (retargetCount === null) {
+      showToast('Lance d’abord une prévisualisation', 'error');
+      return;
+    }
+
+    if (retargetCount <= 0) {
+      showToast('Aucun symlink à retarget', 'error');
+      return;
+    }
+
+    if (retargetConfirm !== 'RETARGET') {
+      showToast('Tape RETARGET pour confirmer', 'error');
+      return;
+    }
+
+    retargetApplying = true;
+
+    try {
+      const payload = {
+        source_mount: retargetSourceMount,
+        destination_mount: retargetDestinationMount,
+        expected_count: retargetCount,
+        confirm: retargetConfirm
+      };
+
+      if (limit !== null) {
+        payload.limit = limit;
+      }
+
+      const res = await fetch('/api/v1/symlinks/retarget/apply', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+
+      const data = await res.json().catch(() => ({}));
+
+      if (!res.ok) {
+        throw new Error(data.detail || 'Erreur pendant le retarget');
+      }
+
+      retargetResult = data;
+
+      if (limit === 1) {
+        retargetTestDone = true;
+        retargetConfirm = '';
+        await refreshRetargetCount(false, false);
+      } else {
+        retargetCount = null;
+        retargetConfirm = '';
+        retargetTestDone = false;
+      }
+
+      showToast(`✅ ${data.retargeted_count} symlink(s) retargeté(s)`);
+    } catch (e) {
+      showToast(e.message || '❌ Erreur pendant le retarget', 'error');
+    } finally {
+      retargetApplying = false;
+    }
+  }
+
   // === LIENS SYMLINKS ===
   function addLinksDir() {
     linksDirs.update(dirs => [...dirs, { path: '', manager: 'sonarr' }]);
@@ -431,6 +551,132 @@
               </button>
             </div>
           {/each}
+        </div>
+      {/if}
+    </fieldset>
+
+    <fieldset class="space-y-4">
+      <legend class="legend-azure text-lg font-semibold">🔁 Retarget symlinks entre mounts</legend>
+
+      <p class="text-sm text-gray-500 dark:text-gray-400">
+        Permet de modifier les cibles des symlinks locaux d’un mount vers un autre.
+        Ne supprime aucun fichier distant.
+      </p>
+
+      <div class="grid gap-4 md:grid-cols-2">
+        <div>
+          <label for="retarget-source" class="label">Source mount actuelle</label>
+          <select
+            id="retarget-source"
+            bind:value={retargetSourceMount}
+            class="input w-full"
+          >
+            <option value="">Choisir une source</option>
+            {#each $mountDirs as mountDir}
+              {#if mountDir && mountDir.trim() !== ''}
+                <option value={mountDir}>{mountDir}</option>
+              {/if}
+            {/each}
+          </select>
+        </div>
+
+        <div>
+          <label for="retarget-destination" class="label">Destination mount</label>
+          <select
+            id="retarget-destination"
+            bind:value={retargetDestinationMount}
+            class="input w-full"
+          >
+            <option value="">Choisir une destination</option>
+            {#each $mountDirs as mountDir}
+              {#if mountDir && mountDir.trim() !== ''}
+                <option value={mountDir}>{mountDir}</option>
+              {/if}
+            {/each}
+          </select>
+        </div>
+      </div>
+
+      <div class="flex flex-wrap gap-3">
+        <button
+          type="button"
+          on:click={refreshRetargetCount}
+          class="btn-outline"
+          disabled={retargetLoading || retargetApplying}
+        >
+          {#if retargetLoading}
+            <Loader2 class="animate-spin w-4 h-4" />
+            Comptage…
+          {:else}
+            Prévisualiser le nombre
+          {/if}
+        </button>
+      </div>
+
+      {#if retargetCount !== null}
+        <div class="option-card space-y-4">
+          <div class="text-sm text-gray-700 dark:text-gray-200">
+            <strong>{retargetCount}</strong> symlink(s) seront retargetés.
+          </div>
+
+          <div>
+            <label for="retarget-confirm" class="label">
+              Confirmation
+            </label>
+
+            <input
+              id="retarget-confirm"
+              type="text"
+              bind:value={retargetConfirm}
+              placeholder="Tape RETARGET"
+              class="input w-full max-w-xs font-medium"
+            />
+          </div>
+
+          <div class="flex flex-wrap gap-3">
+            <button
+              type="button"
+              on:click={() => applyRetarget(1)}
+              class="btn-outline"
+              disabled={retargetApplying}
+            >
+              {#if retargetApplying}
+                <Loader2 class="animate-spin w-4 h-4" />
+                Application…
+              {:else}
+                Tester sur 1 symlink
+              {/if}
+            </button>
+
+            <button
+              type="button"
+              on:click={() => applyRetarget(null)}
+              class="btn-danger"
+              disabled={retargetApplying || !retargetTestDone}
+            >
+              Appliquer à tous
+            </button>
+
+            {#if !retargetTestDone}
+              <p class="text-xs text-yellow-600 dark:text-yellow-400">
+                Lance d’abord “Tester sur 1 symlink” avant d’appliquer à tous.
+              </p>
+            {/if}
+          </div>
+        </div>
+      {/if}
+
+      {#if retargetResult}
+        <div class="option-card space-y-2">
+          <div class="text-sm text-gray-700 dark:text-gray-200">
+            Résultat :
+            <strong>{retargetResult.retargeted_count}</strong> retargeté(s),
+            <strong>{retargetResult.error_count}</strong> erreur(s).
+          </div>
+
+          {#if retargetResult.errors?.length}
+            <pre class="text-xs whitespace-pre-wrap overflow-auto bg-black/80 text-white p-3 rounded-lg">{JSON.stringify(retargetResult.errors, null, 2)}</pre>
+          {/if}
         </div>
       {/if}
     </fieldset>
@@ -755,10 +1001,11 @@
                 />
               </div>
 
-              <div>
+              <div class="md:col-span-2">
                 <label for={`ad-mount-${index}`} class="block text-sm text-gray-600 dark:text-gray-300 mb-1">
                   Chemin WebDAV / mount
                 </label>
+
                 <input
                   id={`ad-mount-${index}`}
                   placeholder="/mnt/alldebrid/__all__"
@@ -766,15 +1013,29 @@
                   class="input w-full"
                 />
 
-                <div class="flex items-center text-yellow-600 text-sm mt-2">
-                  <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                      d="M12 9v2m0 4h.01M10.29 3.86l-7.37 12.8A1 1 0 004 19h16a1 1 0 00.87-1.47l-7.37-12.8a1 1 0 00-1.74 0z" />
-                  </svg>
-                  <span>
-                    Dossier réellement comparé aux symlinks, par exemple
-                    <code>/mnt/alldebrid/__all__</code>.
-                  </span>
+                <div class="mt-3 rounded-xl border border-red-300 bg-red-50 p-4 text-red-700 dark:border-red-800/70 dark:bg-red-950/30 dark:text-red-300">
+                  <div class="flex items-start gap-3">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5 mt-0.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                        d="M12 9v2m0 4h.01M10.29 3.86l-7.37 12.8A1 1 0 004 19h16a1 1 0 00.87-1.47l-7.37-12.8a1 1 0 00-1.74 0z" />
+                    </svg>
+
+                    <div class="space-y-1 text-sm leading-relaxed">
+                      <p class="font-semibold">
+                        Attention : ce chemin doit correspondre à la cible distante réellement utilisée par les symlinks.
+                      </p>
+
+                      <p>
+                        Assure-toi que tous les symlinks de cette instance pointent vers le même mount, par exemple
+                        <code class="font-semibold">/mnt/alldebrid/__all__</code>.
+                      </p>
+
+                      <p>
+                        Si une partie des symlinks pointe encore vers un autre mount, utilise d’abord l’outil
+                        <strong>Retarget symlinks entre mounts</strong> avant d’activer le scan ou la suppression des orphelins.
+                      </p>
+                    </div>
+                  </div>
                 </div>
               </div>
 
@@ -969,6 +1230,26 @@
 
   .btn-outline:hover {
     background: #ecfdf5;
+  }
+
+  .btn-danger {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem 1rem;
+    border: 1px solid #dc2626;
+    border-radius: 0.5rem;
+    color: #dc2626;
+    font-weight: 600;
+    transition: 0.2s;
+  }
+
+  .btn-danger:hover {
+    background: #fef2f2;
+  }
+
+  :global(.dark) .btn-danger:hover {
+    background: rgba(220, 38, 38, 0.12);
   }
 
   :global(.dark) .btn-outline:hover {
