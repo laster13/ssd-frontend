@@ -66,6 +66,18 @@
   let showExplorer = false;
   let explorerIndex: number | null = null;
   let defaultMediaPath = '';
+  let explorerStartPath = '';
+
+  let detectingMountDirs = false;
+
+  let retargetSourceMount = '';
+  let retargetDestinationMount = '';
+  let retargetCount: number | null = null;
+  let retargetLoading = false;
+  let retargetApplying = false;
+  let retargetResult: { retargeted_count?: number; error_count?: number; errors?: unknown[] } | null = null;
+  let retargetConfirm = '';
+  let retargetTestDone = false;
 
   async function initDefaultPath() {
     try {
@@ -83,6 +95,12 @@
 
   function openExplorer(index: number | null = null) {
     explorerIndex = index;
+
+    explorerStartPath =
+      index !== null && $linksDirs[index]?.path
+        ? $linksDirs[index].path
+        : defaultMediaPath;
+
     showExplorer = true;
   }
 
@@ -174,7 +192,7 @@
   }
 
   // === SAUVEGARDE CONFIG ===
-  async function saveConfig() {
+  async function saveConfig(showSuccessToast = true) {
     saving.set(true);
 
     try {
@@ -227,7 +245,10 @@
       });
 
       if (res.ok) {
-        showToast('✅ Configuration complète sauvegardée !');
+        if (showSuccessToast) {
+          showToast('✅ Configuration complète sauvegardée !');
+        }
+
         await loadConfig();
       } else {
         showToast('❌ Erreur lors de la sauvegarde', 'error');
@@ -236,6 +257,153 @@
       showToast('🌐 Erreur réseau', 'error');
     } finally {
       saving.set(false);
+    }
+  }
+
+
+  async function detectMountDirs() {
+    detectingMountDirs = true;
+
+    try {
+      await saveConfig(false);
+
+      const res = await fetch('/api/v1/symlinks/detect-mount-dirs', {
+        method: 'POST'
+      });
+
+      if (!res.ok) {
+        const err: any = await res.json().catch(() => ({}));
+        throw new Error(err.detail || 'Erreur pendant la détection des mount dirs');
+      }
+
+      const data = await res.json();
+      mountDirs.set(data.mount_dirs || []);
+
+      showToast(
+        `✅ ${data.detected_count || 0} mount dir(s) détecté(s) en ${data.elapsed || 0}s`
+      );
+    } catch (e) {
+      showToast(e instanceof Error ? e.message : '❌ Erreur pendant la détection des mount dirs', 'error');
+    } finally {
+      detectingMountDirs = false;
+    }
+  }
+
+  async function refreshRetargetCount(resetTestDone = true, clearResult = true) {
+    if (clearResult) {
+      retargetResult = null;
+    }
+
+    retargetCount = null;
+
+    if (resetTestDone) {
+      retargetTestDone = false;
+    }
+
+    if (!retargetSourceMount || !retargetDestinationMount) {
+      showToast('Choisis une source et une destination', 'error');
+      return;
+    }
+
+    if (retargetSourceMount === retargetDestinationMount) {
+      showToast('Source et destination doivent être différentes', 'error');
+      return;
+    }
+
+    retargetLoading = true;
+
+    try {
+      const res = await fetch('/api/v1/symlinks/retarget/count', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          source_mount: retargetSourceMount,
+          destination_mount: retargetDestinationMount
+        })
+      });
+
+      const data: any = await res.json().catch(() => ({}));
+
+      if (!res.ok) {
+        throw new Error(data.detail || 'Erreur pendant le comptage retarget');
+      }
+
+      retargetCount = data.count;
+      showToast(`✅ ${data.count} symlink(s) concerné(s)`);
+    } catch (e) {
+      showToast(e instanceof Error ? e.message : '❌ Erreur retarget count', 'error');
+    } finally {
+      retargetLoading = false;
+    }
+  }
+
+  async function applyRetarget(limit: number | null = null) {
+    retargetResult = null;
+
+    if (retargetCount === null) {
+      showToast('Lance d’abord une prévisualisation', 'error');
+      return;
+    }
+
+    if (retargetCount <= 0) {
+      showToast('Aucun symlink à retarget', 'error');
+      return;
+    }
+
+    if (retargetConfirm !== 'RETARGET') {
+      showToast('Tape RETARGET pour confirmer', 'error');
+      return;
+    }
+
+    retargetApplying = true;
+
+    try {
+      const payload: {
+        source_mount: string;
+        destination_mount: string;
+        expected_count: number;
+        confirm: string;
+        limit?: number;
+      } = {
+        source_mount: retargetSourceMount,
+        destination_mount: retargetDestinationMount,
+        expected_count: retargetCount,
+        confirm: retargetConfirm
+      };
+
+      if (limit !== null) {
+        payload.limit = limit;
+      }
+
+      const res = await fetch('/api/v1/symlinks/retarget/apply', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+
+      const data: any = await res.json().catch(() => ({}));
+
+      if (!res.ok) {
+        throw new Error(data.detail || 'Erreur pendant le retarget');
+      }
+
+      retargetResult = data;
+
+      if (limit === 1) {
+        retargetTestDone = true;
+        retargetConfirm = '';
+        await refreshRetargetCount(false, false);
+      } else {
+        retargetCount = null;
+        retargetConfirm = '';
+        retargetTestDone = false;
+      }
+
+      showToast(`✅ ${data.retargeted_count} symlink(s) retargeté(s)`);
+    } catch (e) {
+      showToast(e instanceof Error ? e.message : '❌ Erreur pendant le retarget', 'error');
+    } finally {
+      retargetApplying = false;
     }
   }
 
@@ -308,7 +476,7 @@
   <div class="mt-4 flex w-full max-w-6xl flex-col">
     <Separator class="mb-8" />
 
-    <form class="w-full space-y-12" on:submit|preventDefault={saveConfig}>
+    <form class="w-full space-y-12" on:submit|preventDefault={() => saveConfig()}>
       <fieldset class="space-y-4">
         <legend class="legend-azure text-lg font-semibold">📂 Dossiers symlinks</legend>
 
@@ -361,39 +529,197 @@
         <legend class="legend-azure text-lg font-semibold">📦 Dossiers mount / WebDAV</legend>
 
         <p class="text-sm text-gray-500 dark:text-gray-400">
-          Ces chemins correspondent aux dossiers réellement montés, par exemple
-          <code>/mnt/alldebrid/__all__</code>. Le backend les utilise comme racines de
-          référence pour résoudre les cibles des symlinks.
+          Ces chemins sont détectés automatiquement depuis les cibles des symlinks.
+          Tu peux ensuite choisir, modifier ou supprimer ceux que tu veux garder.
         </p>
 
-        <div class="space-y-3">
-          {#each $mountDirs as mountDir, index (index)}
-            <div
-              class="flex flex-col md:flex-row gap-3 bg-white/70 dark:bg-gray-800/60 backdrop-blur-lg p-4 rounded-xl shadow border border-gray-200 dark:border-gray-700"
+        <div class="flex flex-wrap gap-3">
+          <button
+            type="button"
+            on:click={detectMountDirs}
+            class="btn-outline"
+            disabled={detectingMountDirs}
+          >
+            {#if detectingMountDirs}
+              <Loader2 class="animate-spin w-4 h-4" />
+              Détection…
+            {:else}
+              <FolderPlus class="w-4 h-4" />
+              Détecter les mount dirs
+            {/if}
+          </button>
+
+          <button
+            type="button"
+            on:click={addMountDir}
+            class="btn-outline"
+          >
+            <FolderPlus class="w-4 h-4" />
+            Ajouter un mount manuel
+          </button>
+        </div>
+
+        {#if $mountDirs.length === 0}
+          <div class="text-sm text-gray-500 dark:text-gray-400 bg-white/70 dark:bg-gray-800/60 p-4 rounded-xl border border-gray-200 dark:border-gray-700">
+            Aucun mount dir détecté pour le moment. Configure tes dossiers symlinks, puis lance la détection.
+          </div>
+        {:else}
+          <div class="space-y-3">
+            {#each $mountDirs as mountDir, index (index)}
+              <div
+                class="flex flex-col md:flex-row gap-3 bg-white/70 dark:bg-gray-800/60 backdrop-blur-lg p-4 rounded-xl shadow border border-gray-200 dark:border-gray-700"
+              >
+                <input
+                  type="text"
+                  bind:value={$mountDirs[index]}
+                  placeholder="/mnt/alldebrid/__all__"
+                  class="flex-1 input font-medium"
+                />
+
+                <span class="input font-medium opacity-70 select-none">
+                  Mount
+                </span>
+
+                <button
+                  type="button"
+                  on:click={() => removeMountDir(index)}
+                  class="text-red-500 hover:text-red-600 hover:scale-110 transition"
+                  aria-label="Supprimer ce dossier mount"
+                >
+                  <Trash2 class="w-5 h-5" />
+                </button>
+              </div>
+            {/each}
+          </div>
+        {/if}
+      </fieldset>
+
+      <fieldset class="space-y-4">
+        <legend class="legend-azure text-lg font-semibold">🔁 Retarget symlinks entre mounts</legend>
+
+        <p class="text-sm text-gray-500 dark:text-gray-400">
+          Permet de modifier les cibles des symlinks locaux d’un mount vers un autre.
+          Ne supprime aucun fichier distant.
+        </p>
+
+        <div class="grid gap-4 md:grid-cols-2">
+          <div>
+            <label for="retarget-source" class="label">Source mount actuelle</label>
+            <select
+              id="retarget-source"
+              bind:value={retargetSourceMount}
+              class="input w-full"
             >
+              <option value="">Choisir une source</option>
+              {#each $mountDirs as mountDir}
+                {#if mountDir && mountDir.trim() !== ''}
+                  <option value={mountDir}>{mountDir}</option>
+                {/if}
+              {/each}
+            </select>
+          </div>
+
+          <div>
+            <label for="retarget-destination" class="label">Destination mount</label>
+            <select
+              id="retarget-destination"
+              bind:value={retargetDestinationMount}
+              class="input w-full"
+            >
+              <option value="">Choisir une destination</option>
+              {#each $mountDirs as mountDir}
+                {#if mountDir && mountDir.trim() !== ''}
+                  <option value={mountDir}>{mountDir}</option>
+                {/if}
+              {/each}
+            </select>
+          </div>
+        </div>
+
+        <div class="flex flex-wrap gap-3">
+          <button
+            type="button"
+            on:click={() => refreshRetargetCount()}
+            class="btn-outline"
+            disabled={retargetLoading || retargetApplying}
+          >
+            {#if retargetLoading}
+              <Loader2 class="animate-spin w-4 h-4" />
+              Comptage…
+            {:else}
+              Prévisualiser le nombre
+            {/if}
+          </button>
+        </div>
+
+        {#if retargetCount !== null}
+          <div class="option-card space-y-4">
+            <div class="text-sm text-gray-700 dark:text-gray-200">
+              <strong>{retargetCount}</strong> symlink(s) seront retargetés.
+            </div>
+
+            <div>
+              <label for="retarget-confirm" class="label">
+                Confirmation
+              </label>
+
               <input
+                id="retarget-confirm"
                 type="text"
-                bind:value={$mountDirs[index]}
-                placeholder="/mnt/alldebrid/__all__"
-                class="flex-1 input font-medium"
+                bind:value={retargetConfirm}
+                placeholder="Tape RETARGET"
+                class="input w-full max-w-xs font-medium"
               />
+            </div>
+
+            <div class="flex flex-wrap gap-3">
+              <button
+                type="button"
+                on:click={() => applyRetarget(1)}
+                class="btn-outline"
+                disabled={retargetApplying}
+              >
+                {#if retargetApplying}
+                  <Loader2 class="animate-spin w-4 h-4" />
+                  Application…
+                {:else}
+                  Tester sur 1 symlink
+                {/if}
+              </button>
 
               <button
                 type="button"
-                on:click={() => removeMountDir(index)}
-                class="text-red-500 hover:text-red-600 hover:scale-110 transition"
-                aria-label="Supprimer ce dossier mount"
+                on:click={() => applyRetarget(null)}
+                class="btn-danger"
+                disabled={retargetApplying || !retargetTestDone}
               >
-                <Trash2 class="w-5 h-5" />
+                Appliquer à tous
               </button>
-            </div>
-          {/each}
-        </div>
 
-        <button type="button" on:click={addMountDir} class="btn-outline">
-          <FolderPlus class="w-4 h-4" /> Ajouter un dossier mount
-        </button>
+              {#if !retargetTestDone}
+                <p class="text-xs text-yellow-600 dark:text-yellow-400">
+                  Lance d’abord “Tester sur 1 symlink” avant d’appliquer à tous.
+                </p>
+              {/if}
+            </div>
+          </div>
+        {/if}
+
+        {#if retargetResult}
+          <div class="option-card space-y-2">
+            <div class="text-sm text-gray-700 dark:text-gray-200">
+              Résultat :
+              <strong>{retargetResult.retargeted_count}</strong> retargeté(s),
+              <strong>{retargetResult.error_count}</strong> erreur(s).
+            </div>
+
+            {#if retargetResult.errors?.length}
+              <pre class="text-xs whitespace-pre-wrap overflow-auto bg-black/80 text-white p-3 rounded-lg">{JSON.stringify(retargetResult.errors, null, 2)}</pre>
+            {/if}
+          </div>
+        {/if}
       </fieldset>
+
 
       <fieldset class="space-y-6">
         <legend class="legend-azure text-lg font-semibold">🔑 Clés API</legend>
@@ -818,7 +1144,7 @@
             on:click|stopPropagation
             on:keydown={(e) => { if (e.key === 'Enter' || e.key === ' ') e.preventDefault(); }}
           >
-            <FileExplorer startPath={defaultMediaPath} onSelect={handleSelect} />
+            <FileExplorer startPath={explorerStartPath || defaultMediaPath} onSelect={handleSelect} />
           </button>
         </div>
       </div>
