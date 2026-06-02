@@ -1,35 +1,46 @@
-<<<<<<< HEAD
 .DS_Store
+
+# Dependencies
 node_modules
+package-lock.json
+
+# Build outputs
 /build
 /.svelte-kit
 /package
+dist
+
+# Env
 .env
 .env.*
 !.env.example
+
+# Vite timestamps
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
+
+# IDE
 .idea
-/.vs
-/package-lock.json
-=======
-.DS_Store
-node_modules
-/build
-/.svelte-kit
-/package
-.env
-.env.*
-!.env.example
-vite.config.js.timestamp-*
-vite.config.ts.timestamp-*
-.idea
-/.vs
-/package-lock.json
 .vscode
-<<<<<<< HEAD
+/.vs
+
+# Local generated config
 server-config.json
->>>>>>> upstream/main
-=======
+
+# Runtime/local config folder
 /config
->>>>>>> upstream/main
+
+# Local docker compose
+docker-compose.yml
+
+# Runtime local static files
+static/services.json
+static/settings.json
+
+# Logs
+logs
+*.log
+
+# Cache
+.cache
+.pnpm-store

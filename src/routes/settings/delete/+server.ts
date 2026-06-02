@@ -2,7 +2,7 @@ import { json } from '@sveltejs/kit';
 import fs from 'fs/promises';
 import os from 'os';
 
-const userName = os.userInfo().username;
+const userName = process.env.SSD_USER || process.env.USER || os.userInfo().username;
 
 // Chemins des fichiers
 const settingsFilePath = `/home/${userName}/seedbox/docker/${userName}/projet-ssd/ssd-frontend/static/settings.json`;

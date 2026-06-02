@@ -1,0 +1,33 @@
+services:
+  ssd-frontend:
+    image: frontend:latest
+    container_name: ssd-frontend
+    restart: unless-stopped
+
+    env_file:
+      - .env
+
+    environment:
+      SSD_USER: your_user
+      USER: your_user
+      HOME: /home/your_user
+      ORIGIN: https://ssdv2.your-domain.tld
+      BACKEND_URL: https://ssdv2.your-domain.tld
+      HOST: 0.0.0.0
+      PORT: 3000
+      TZ: Europe/Paris
+
+    ports:
+      - "3000:3000"
+
+    volumes:
+      - /home/your_user/seedbox/docker/your_user/projet-ssd/ssd-frontend/static:/home/your_user/seedbox/docker/your_user/projet-ssd/ssd-frontend/static
+      - /home/your_user/seedbox/docker/your_user/projet-ssd/ssd-backend/data:/home/your_user/seedbox/docker/your_user/projet-ssd/ssd-backend/data
+      - /home/your_user/seedbox-compose:/home/your_user/seedbox-compose
+
+    networks:
+      - traefik_proxy
+
+networks:
+  traefik_proxy:
+    external: true

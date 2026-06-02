@@ -1,0 +1,14 @@
+node_modules
+.pnpm-store
+.svelte-kit
+build
+dist
+.git
+.gitignore
+Dockerfile
+docker-compose.yml
+npm-debug.log
+pnpm-debug.log
+yarn-debug.log
+.env.local
+.env.*.local

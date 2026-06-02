@@ -3,7 +3,7 @@ import fs from 'fs/promises';
 import { json } from '@sveltejs/kit';
 
 export async function GET() {
-    const userName = process.env.USER || 'default_user';
+    const userName = process.env.SSD_USER || process.env.USER || 'maman';
     const filePath = `/home/${userName}/seedbox-compose/includes/config/services-available`;
 
     try {
