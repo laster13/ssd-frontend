@@ -16,6 +16,7 @@
 	import { Button } from '$lib/components/ui/button';
 	import CheckboxField from './components/checkbox-field.svelte';
 	import GroupCheckboxField from './components/group-checkbox-field.svelte';
+        import { goto } from '$app/navigation';
 
 	export let data: SuperValidated<Infer<MediaServerSettingsSchema>>;
 	export let actionUrl: string = '?/default';
@@ -26,6 +27,11 @@
 		validators: zodClient(mediaServerSettingsSchema),
 		onError(event) {
 			toast.error(event.result.error.message);
+		},
+		onUpdated({ form }) {
+			if (form.valid && actionUrl.includes('onboarding=true')) {
+				goto('/onboarding/4');
+			}
 		}
 	});
 
