@@ -1,7 +1,7 @@
 import type { PageServerLoad, Actions } from './$types';
 import { superValidate, message } from 'sveltekit-superforms';
 import { zod } from 'sveltekit-superforms/adapters';
-import { fail } from '@sveltejs/kit';
+import { fail, redirect } from '@sveltejs/kit';
 import {
 	mediaServerSettingsSchema,
 	mediaServerSettingsToGet,
@@ -52,6 +52,10 @@ export const actions: Actions = {
 			return message(form, 'Unable to save settings. API is down.', {
 				status: 400
 			});
+		}
+
+		if (event.url.searchParams.get('onboarding') === 'true') {
+			throw redirect(303, '/onboarding/4');
 		}
 
 		return message(form, 'Settings saved!');
