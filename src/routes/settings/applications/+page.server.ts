@@ -15,8 +15,7 @@ import fs from 'fs/promises';
 import os from 'os';
 import { SettingsService } from '$lib/client';
 
-const userName = process.env.SSD_USER || process.env.USER || os.userInfo().username;
-const settingsFilePath = `/home/${userName}/seedbox/docker/${userName}/projet-ssd/ssd-frontend/static/settings.json`;
+const settingsFilePath = process.env.FRONTEND_SETTINGS_PATH || 'static/settings.json';
 
 export const load: PageServerLoad = async ({ fetch }) => {
     console.log('--- Début de la fonction de chargement ---');

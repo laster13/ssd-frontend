@@ -1,14 +1,11 @@
 import { json } from '@sveltejs/kit';
 import fs from 'fs/promises';
-import os from 'os';
 
-const userName = process.env.SSD_USER || process.env.USER || os.userInfo().username;
-
-// Chemins des fichiers
-const settingsFilePath = `/home/${userName}/seedbox/docker/${userName}/projet-ssd/ssd-frontend/static/settings.json`;
-const localSettingsFilePath = `/home/${userName}/seedbox/docker/${userName}/projet-ssd/ssd-backend/data/settings.json`;
-const servicesFilePath = `/home/${userName}/seedbox/docker/${userName}/projet-ssd/ssd-frontend/static/services.json`;
-const sourceFilePath = `/home/${userName}/seedbox-compose/includes/config/services-available`;
+const settingsFilePath = process.env.FRONTEND_SETTINGS_PATH || '/app/static/settings.json';
+const localSettingsFilePath = process.env.BACKEND_SETTINGS_PATH || '/app/backend-data/settings.json';
+const servicesFilePath = process.env.FRONTEND_SERVICES_PATH || '/app/static/services.json';
+const sourceFilePath =
+	process.env.SERVICES_AVAILABLE_PATH || '/home/maman/seedbox-compose/includes/config/services-available';
 
 // Fonction pour générer les items à partir de la source
 async function generateJsonFromSource() {
