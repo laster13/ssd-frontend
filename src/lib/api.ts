@@ -1,7 +1,7 @@
 import axios from 'axios';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
-const BACKEND_URL = import.meta.env.VITE_BACKEND_URL_HTTPS;
+const BACKEND_URL = '';
 
 export const api = axios.create({
   baseURL: API_BASE_URL,
@@ -47,7 +47,7 @@ export const auth = {
   },
 
   getAuthStatus: async () => {
-    const { data } = await axios.get(`${BACKEND_URL}/api/v1/auth/status`, {
+    const { data } = await axios.get(`/api/v1/auth/status`, {
       withCredentials: true
     });
     return data as { enabled: boolean };
@@ -55,7 +55,7 @@ export const auth = {
 
   setAuthStatus: async (enabled: boolean) => {
     const { data } = await axios.post(
-      `${BACKEND_URL}/api/v1/auth/toggle`,
+      `/api/v1/auth/toggle`,
       { enabled },
       {
         withCredentials: true

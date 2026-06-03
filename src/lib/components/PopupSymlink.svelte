@@ -4,9 +4,7 @@
   import { cubicOut } from "svelte/easing";
   import { ExternalLink, Wrench, Tv, X, Play, Loader2 } from "lucide-svelte";
 
-  const baseURL = import.meta.env.DEV
-    ? import.meta.env.VITE_BACKEND_URL_HTTP
-    : import.meta.env.VITE_BACKEND_URL_HTTPS;
+  const baseURL = '';
 
   export let item: any;
 
@@ -64,7 +62,7 @@
 
         if (json.id) {
           window.open(
-            `${import.meta.env.VITE_BACKEND_URL_HTTPS}/season/shows/${json.id}`,
+            `/season/shows/${json.id}`,
             "_blank",
             "noopener,noreferrer"
           );
@@ -107,7 +105,7 @@
         isFrenchTrailer = title.includes("vf") || title.includes("français");
 
         // ✅ Correction : URL d’intégration complète (avec ton domaine)
-        const origin = import.meta.env.VITE_BACKEND_URL_HTTPS;
+        const origin = window.location.origin;
         const trailerUrl = `https://www.youtube.com/embed/${videoId}?autoplay=1&enablejsapi=1&modestbranding=1&playsinline=1&rel=0&origin=${encodeURIComponent(
           origin
         )}&widget_referrer=${encodeURIComponent(origin)}`;

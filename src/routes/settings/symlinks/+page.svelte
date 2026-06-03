@@ -38,10 +38,7 @@
   }
 
   // --- Variables locales ---
-  const baseURL = import.meta.env.DEV
-    ? import.meta.env.VITE_BACKEND_URL_HTTP
-    : import.meta.env.VITE_BACKEND_URL_HTTPS;
-
+  const baseURL = "";
   let instanceId: number | null = null;
   let menu: HTMLDetailsElement;
   let sortedColumn: string | null = null;
@@ -568,7 +565,7 @@
 
   // --- SSE ---
   function connectSSE() {
-    const eventSource = new EventSource(`${baseURL}/api/v1/symlinks/events`);
+    const eventSource = new EventSource(`/api/v1/symlinks/events`);
 
     eventSource.addEventListener("symlink_update", async (event: MessageEvent) => {
       try {

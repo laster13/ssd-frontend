@@ -562,12 +562,7 @@
 
 	async function loadInitialActivities() {
 		try {
-			const url =
-				window.location.protocol === "https:"
-					? import.meta.env.VITE_BACKEND_URL_HTTPS
-					: import.meta.env.VITE_BACKEND_URL_HTTP;
-
-			const resp = await fetch(`${url}/api/v1/system-activities?limit=2000`, {
+			const resp = await fetch(`/api/v1/system-activities?limit=2000`, {
 				credentials: "include"
 			});
 
@@ -576,7 +571,7 @@
 			const data = await resp.json();
 
 			const unreplacedResp = await fetch(
-				`${url}/api/v1/system-activities/unreplaced?limit=5000`,
+				`/api/v1/system-activities/unreplaced?limit=5000`,
 				{
 					credentials: "include"
 				}
@@ -631,14 +626,9 @@
 		if (!id) return;
 
 		try {
-			const url =
-				window.location.protocol === "https:"
-					? import.meta.env.VITE_BACKEND_URL_HTTPS
-					: import.meta.env.VITE_BACKEND_URL_HTTP;
-
-			const resp = await fetch(`${url}/api/v1/system-activities/${id}`, {
+			const resp = await fetch(`/api/v1/system-activities/${id}`, {
 				method: "DELETE",
-				credentials: "include",
+				credentials: "include"
 			});
 
 			if (!resp.ok) throw new Error("Erreur API delete");
@@ -653,12 +643,9 @@
 	function connectSSE() {
 		if (!browser) return;
 
-		backendUrl =
-			window.location.protocol === "https:"
-				? import.meta.env.VITE_BACKEND_URL_HTTPS
-				: import.meta.env.VITE_BACKEND_URL_HTTP;
+                backendUrl = "";
 
-		const eventUrl = `${backendUrl}/api/v1/symlinks/events`;
+		const eventUrl = `/api/v1/symlinks/events`;
 
 		if (es) es.close();
 		es = new EventSource(eventUrl);

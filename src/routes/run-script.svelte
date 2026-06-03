@@ -7,7 +7,6 @@
   export let label: string | null = null;
   export let showLogs: boolean;
 
-  let backendUrl: string = "";   // défini au mount
   let statusMessage = '';
   let logs: { id: number; text: string }[] = [];
   let logId = 0;
@@ -27,9 +26,6 @@
 
     dispatch('buttonStateChange', { isSubmitting: true, showSpinner: true });
 
-    const url = label
-      ? `${backendUrl}/api/v1/scripts/run/${scriptName}?label=${encodeURIComponent(label)}`
-      : `${backendUrl}/api/v1/scripts/run/${scriptName}`;
 
     console.log('URL générée :', url);
 
@@ -71,9 +67,7 @@
   onMount(() => {
     if (!browser) return;
 
-    backendUrl = window.location.protocol === "https:"
-      ? import.meta.env.VITE_BACKEND_URL_HTTPS
-      : import.meta.env.VITE_BACKEND_URL_HTTP;
+    backendUrl = "";
 
     // ✅ handler unique pour capter l’événement déclencheur
     const handler = (event: CustomEvent) => {

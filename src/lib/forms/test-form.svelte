@@ -18,9 +18,7 @@
   let showLogs = false;
 
   if (browser) {
-    backendUrl = window.location.protocol === 'https:'
-      ? import.meta.env.VITE_BACKEND_URL_HTTPS
-      : import.meta.env.VITE_BACKEND_URL_HTTP;
+    backendUrl = "";
   } else {
     backendUrl = import.meta.env.VITE_BACKEND_URL;
   }

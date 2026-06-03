@@ -3,7 +3,7 @@
     import { fade, fly } from 'svelte/transition';
     import { goto } from '$app/navigation';
 
-    const BASE_URL = import.meta.env.VITE_BACKEND_URL_HTTPS || '';
+    const BASE_URL = '';
 
     function openUpdatePage() {
         goto(`${BASE_URL}/settings/update`);

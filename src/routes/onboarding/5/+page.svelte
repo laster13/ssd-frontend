@@ -8,7 +8,6 @@
   import { Progress } from '$lib/components/ui/progress';
   import { goto } from '$app/navigation';
 
-  const BACKEND_URL = import.meta.env.VITE_BACKEND_URL_HTTPS;
 
   const formProgress = getContext<Writable<number>>('formProgress');
   formProgress.set(3);
@@ -96,7 +95,7 @@
       });
 
       // marque onboarding terminé
-      await fetch(`${BACKEND_URL}/api/v1/settings/complete-onboarding`, {
+      await fetch('/api/v1/settings/complete-onboarding', {
         method: "POST",
         headers: { "Content-Type": "application/json" }
       });

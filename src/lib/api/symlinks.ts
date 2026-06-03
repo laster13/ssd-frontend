@@ -1,8 +1,6 @@
 // src/lib/api/symlinks.ts
 
-const baseURL = import.meta.env.DEV
-  ? import.meta.env.VITE_BACKEND_URL_HTTP
-  : import.meta.env.VITE_BACKEND_URL_HTTPS;
+const baseURL = "";
 
 // --- utils génériques ---
 async function handleResponse(res: Response) {

@@ -3,14 +3,12 @@ import { auth } from '$lib/api';
 import { redirect } from '@sveltejs/kit';
 import { browser } from '$app/environment';
 
-const BACKEND_URL = import.meta.env.VITE_BACKEND_URL_HTTPS;
-
 export const load: LayoutLoad = async ({ url, fetch }) => {
   if (!browser) {
     return { user: null };
   }
 
-  const res = await fetch(`${BACKEND_URL}/api/v1/settings/get/all`);
+  const res = await fetch('/api/v1/settings/get/all');
 
   if (!res.ok) {
     console.error('❌ Impossible de récupérer les settings :', res.status);
@@ -34,7 +32,7 @@ export const load: LayoutLoad = async ({ url, fetch }) => {
   let authEnabled = true;
 
   try {
-    const authStatusRes = await fetch(`${BACKEND_URL}/api/v1/auth/status`);
+    const authStatusRes = await fetch('/api/v1/auth/status');
 
     if (authStatusRes.ok) {
       const authStatus = await authStatusRes.json();
