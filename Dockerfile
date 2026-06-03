@@ -27,11 +27,15 @@ COPY --from=build /app/build ./build
 COPY --from=build /app/package.json ./package.json
 COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/static ./static
-COPY --from=build /app/config ./config
 COPY --from=build /app/version.json ./version.json
 
-RUN ln -sfn /app /ssd-frontend
+COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
+
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh \
+    && mkdir -p /app/config \
+    && ln -sfn /app /ssd-frontend
 
 EXPOSE 3000
 
+ENTRYPOINT ["docker-entrypoint.sh"]
 CMD ["node", "build"]

@@ -21,10 +21,10 @@ services:
       - "3000:3000"
 
     volumes:
-      - /home/your_user/seedbox/docker/your_user/projet-ssd/ssd-frontend/static:/home/your_user/seedbox/docker/your_user/projet-ssd/ssd-frontend/static
-      - /home/your_user/seedbox/docker/your_user/projet-ssd/ssd-backend/data:/home/your_user/seedbox/docker/your_user/projet-ssd/ssd-backend/data
-      - /home/your_user/seedbox-compose:/home/your_user/seedbox-compose
-
+    volumes:
+      - /home/${SSD_USER}/seedbox/docker/${SSD_USER}/projet-ssd/ssd-frontend/static:/app/static
+      - /home/${SSD_USER}/seedbox/docker/${SSD_USER}/projet-ssd/ssd-backend/data:/app/backend-data
+      - /home/${SSD_USER}/seedbox-compose:/home/${SSD_USER}/seedbox-compose
     networks:
       - traefik_proxy
 
