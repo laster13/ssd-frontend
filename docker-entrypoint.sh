@@ -21,20 +21,38 @@ cat > /app/config/servers.json <<EOF
 EOF
 
 if [ ! -f /app/static/settings.json ]; then
-  echo '{}' > /app/static/settings.json
+  cat > /app/static/settings.json <<EOF
+{
+  "applications": [],
+  "dossiers": {
+    "on_item_type": [],
+    "authentification": {
+      "authappli": "basique"
+    },
+    "domaine": {}
+  }
+}
+EOF
 fi
 
 if [ ! -f /app/static/services.json ]; then
   echo '[]' > /app/static/services.json
 fi
 
-cp /app/static/settings.json /app/build/client/settings.json
-cp /app/static/services.json /app/build/client/services.json
+rm -f /app/build/client/settings.json
+rm -f /app/build/client/services.json
+
+ln -sfn /app/static/settings.json /app/build/client/settings.json
+ln -sfn /app/static/services.json /app/build/client/services.json
+
+if [ -n "$SSD_UID" ] && [ -n "$SSD_GID" ]; then
+  chown -R "$SSD_UID:$SSD_GID" /app/static || true
+fi
 
 echo "✅ /app/config/servers.json généré"
 cat /app/config/servers.json
 
-echo "✅ /app/build/client/settings.json prêt"
-echo "✅ /app/build/client/services.json prêt"
+echo "✅ /settings.json lié vers /app/static/settings.json"
+echo "✅ /services.json lié vers /app/static/services.json"
 
 exec "$@"
