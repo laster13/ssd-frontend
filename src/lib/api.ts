@@ -1,7 +1,6 @@
 import axios from 'axios';
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
-const BACKEND_URL = '';
+const API_BASE_URL = '/api/v1';
 
 export const api = axios.create({
   baseURL: API_BASE_URL,
@@ -121,7 +120,7 @@ export const sonarr = {
     if (filters.year_to) params.append('year_to', filters.year_to);
     if (filters.runtime_min) params.append('runtime_min', filters.runtime_min);
     if (filters.runtime_max) params.append('runtime_max', filters.runtime_max);
-    if (filters.certification) params.append('certification', filters.certification);
+    if (filters.certification) params.append('certification');
 
     return api.get(`/shows?${params}`);
   },

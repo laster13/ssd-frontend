@@ -2,7 +2,7 @@
 import { writable } from "svelte/store";
 import { updateNotification } from "$lib/stores/symlinks";
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
+const API_BASE_URL = '/api/v1';
 
 // État simple réutilisé par la page de mise à jour
 export const connectionStatus = writable<"connected" | "disconnected">("disconnected");
