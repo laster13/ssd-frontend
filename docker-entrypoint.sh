@@ -2,6 +2,8 @@
 set -e
 
 mkdir -p /app/config
+mkdir -p /app/static
+mkdir -p /app/build/client
 
 BACKEND_URL_VALUE="${BACKEND_URL:-https://ssdv2.streamfusion.fr}"
 
@@ -18,7 +20,21 @@ cat > /app/config/servers.json <<EOF
 }
 EOF
 
+if [ ! -f /app/static/settings.json ]; then
+  echo '{}' > /app/static/settings.json
+fi
+
+if [ ! -f /app/static/services.json ]; then
+  echo '[]' > /app/static/services.json
+fi
+
+cp /app/static/settings.json /app/build/client/settings.json
+cp /app/static/services.json /app/build/client/services.json
+
 echo "✅ /app/config/servers.json généré"
 cat /app/config/servers.json
+
+echo "✅ /app/build/client/settings.json prêt"
+echo "✅ /app/build/client/services.json prêt"
 
 exec "$@"
