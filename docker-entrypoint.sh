@@ -55,4 +55,20 @@ cat /app/config/servers.json
 echo "✅ /settings.json lié vers /app/static/settings.json"
 echo "✅ /services.json lié vers /app/static/services.json"
 
+if [ -d /opt/ssd-frontend-scripts ]; then
+  mkdir -p /app/scripts
+
+  if [ -z "$(find /app/scripts -maxdepth 1 -type f -name '*.sh' 2>/dev/null)" ]; then
+    cp -a /opt/ssd-frontend-scripts/. /app/scripts/
+    chmod +x /app/scripts/*.sh 2>/dev/null || true
+    echo "✅ scripts copiés vers /app/scripts"
+  else
+    echo "✅ scripts déjà présents dans /app/scripts"
+  fi
+
+  if [ -n "$SSD_UID" ] && [ -n "$SSD_GID" ]; then
+    chown -R "$SSD_UID:$SSD_GID" /app/scripts || true
+  fi
+fi
+
 exec "$@"

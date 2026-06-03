@@ -28,6 +28,7 @@ COPY --from=build /app/package.json ./package.json
 COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/static ./static
 COPY --from=build /app/scripts ./scripts
+COPY --from=build /app/scripts /opt/ssd-frontend-scripts
 COPY --from=build /app/version.json ./version.json
 
 COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
