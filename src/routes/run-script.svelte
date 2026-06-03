@@ -11,86 +11,132 @@
   let logs: { id: number; text: string }[] = [];
   let logId = 0;
   let logsBox: HTMLPreElement;
+  let eventSource: EventSource | null = null;
 
   const dispatch = createEventDispatcher();
 
+  function buildScriptUrl(script: string, appLabel: string | null) {
+    const params = new URLSearchParams();
+
+    if (appLabel) {
+      params.set('label', appLabel);
+    }
+
+    const query = params.toString();
+
+    return `/api/v1/scripts/run/${encodeURIComponent(script)}${query ? `?${query}` : ''}`;
+  }
+
+  function closeEventSource() {
+    if (eventSource) {
+      eventSource.close();
+      eventSource = null;
+    }
+  }
+
+  function finishScript(success: boolean, message: string) {
+    if (success) {
+      toast.success(message);
+    } else {
+      toast.error(message);
+    }
+
+    statusMessage = success ? '' : message;
+
+    dispatch('buttonStateChange', {
+      isSubmitting: false,
+      showSpinner: false
+    });
+
+    dispatch('statusMessageUpdate', { statusMessage });
+
+    if (success) {
+      dispatch('scriptCompleted');
+    }
+
+    closeEventSource();
+  }
+
   function runScript() {
+    if (!scriptName) {
+      toast.error('Aucun script à exécuter.');
+      return;
+    }
+
+    closeEventSource();
+
     console.log(
       'Lancement du script:',
       scriptName,
-      label ? `avec label: ${label}` : "sans label"
+      label ? `avec label: ${label}` : 'sans label'
     );
 
     logs = [];
     logId = 0;
+    statusMessage = 'Démarrage du script...';
 
-    dispatch('buttonStateChange', { isSubmitting: true, showSpinner: true });
+    dispatch('buttonStateChange', {
+      isSubmitting: true,
+      showSpinner: true
+    });
 
+    dispatch('statusMessageUpdate', { statusMessage });
+
+    const url = buildScriptUrl(scriptName, label);
 
     console.log('URL générée :', url);
 
-    const eventSource = new EventSource(url);
+    eventSource = new EventSource(url);
 
     eventSource.onmessage = async (event) => {
-      console.log("Log reçu :", event.data);
+      console.log('Log reçu :', event.data);
+
       logs = [...logs, { id: ++logId, text: event.data }].slice(-200);
-      statusMessage = "En cours de traitement...";
+      statusMessage = 'En cours de traitement...';
+
       dispatch('statusMessageUpdate', { statusMessage });
 
       await tick();
 
-      // ✅ Protection contre logsBox undefined
       if (logsBox) {
         logsBox.scrollTop = logsBox.scrollHeight;
       }
     };
 
     eventSource.onerror = (error) => {
-      console.error("Erreur de connexion à EventSource :", error);
-      toast.error("Erreur lors de l'exécution du script.");
-      statusMessage = "Erreur lors de l'exécution du script.";
-      dispatch('statusMessageUpdate', { statusMessage });
-      eventSource.close();
-      dispatch('buttonStateChange', { isSubmitting: false, showSpinner: false });
+      console.error('Erreur de connexion à EventSource :', error);
+
+      finishScript(false, "Erreur lors de l'exécution du script.");
     };
 
-    eventSource.addEventListener("end", () => {
-      toast.success("Opération terminée avec succès");
-      statusMessage = '';
-      dispatch('buttonStateChange', { isSubmitting: false, showSpinner: false });
-      dispatch('statusMessageUpdate', { statusMessage });
-      dispatch('scriptCompleted');
-      eventSource.close();
+    eventSource.addEventListener('end', () => {
+      finishScript(true, 'Opération terminée avec succès');
     });
   }
 
   onMount(() => {
     if (!browser) return;
 
-    backendUrl = "";
-
-    // ✅ handler unique pour capter l’événement déclencheur
     const handler = (event: CustomEvent) => {
       console.log('Événement startScript capté avec:', event.detail.scriptName);
+
       scriptName = event.detail.scriptName;
       label = event.detail.label || null;
-      if (scriptName) {
-        runScript();
-      }
+
+      runScript();
     };
 
-    window.addEventListener('startScript', handler);
+    window.addEventListener('startScript', handler as EventListener);
 
-    // 🔑 nettoyage pour éviter les doublons
     return () => {
-      window.removeEventListener('startScript', handler);
+      window.removeEventListener('startScript', handler as EventListener);
+      closeEventSource();
     };
   });
 </script>
 
 {#if showLogs}
   <div class="mt-4 rounded-xl shadow-lg overflow-hidden bg-white dark:bg-black">
-    <!-- Barre d’en-tête style terminal -->
     <div class="flex items-center gap-2 px-4 py-2 bg-gray-100 dark:bg-gray-800 border-b border-gray-300 dark:border-gray-700">
       <span class="w-3 h-3 rounded-full bg-red-500"></span>
       <span class="w-3 h-3 rounded-full bg-yellow-400"></span>
@@ -100,11 +146,9 @@
       </p>
     </div>
 
-    <!-- Zone de logs -->
     <pre
       bind:this={logsBox}
-      class="p-4 font-mono text-sm text-gray-700 dark:text-emerald-300 
-             max-h-[50vh] overflow-y-auto space-y-1"
+      class="p-4 font-mono text-sm text-gray-700 dark:text-emerald-300 max-h-[50vh] overflow-y-auto space-y-1"
     >
       {#each logs as log (log.id)}
         <div class="animate-fadeIn">{log.text}</div>
