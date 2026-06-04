@@ -421,9 +421,9 @@
     <div class="relative w-full max-w-4xl aspect-video">
       <iframe
         src={tmdbData.trailer}
-        referrerpolicy="origin"
+        referrerpolicy="strict-origin-when-cross-origin"
         class="w-full h-full rounded-xl"
-        allow="autoplay; fullscreen"
+        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; fullscreen"
         allowfullscreen
         title="Bande-annonce"
       ></iframe>
