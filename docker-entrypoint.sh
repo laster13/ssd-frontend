@@ -5,7 +5,17 @@ mkdir -p /app/config
 mkdir -p /app/static
 mkdir -p /app/build/client
 
-BACKEND_URL_VALUE="${BACKEND_URL:-https://ssdv2.streamfusion.fr}"
+if [ -n "$BACKEND_URL" ]; then
+  BACKEND_URL_VALUE="$BACKEND_URL"
+elif [ -n "$SSD_SUBDOMAIN" ] && [ -n "$SSD_DOMAIN" ]; then
+  BACKEND_URL_VALUE="https://$SSD_SUBDOMAIN.$SSD_DOMAIN"
+elif [ -n "$SSD_DOMAIN" ]; then
+  BACKEND_URL_VALUE="https://$SSD_DOMAIN"
+else
+  echo "❌ BACKEND_URL manquant"
+  echo "   Définis BACKEND_URL, ou SSD_SUBDOMAIN + SSD_DOMAIN."
+  exit 1
+fi
 
 API_KEY_VALUE="${BACKEND_API_KEY:-}"
 
